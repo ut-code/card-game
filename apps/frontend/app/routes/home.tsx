@@ -1,17 +1,25 @@
 import type { Route } from "./+types/home";
-import { Welcome } from "../welcome/welcome";
+import { client } from "~/lib/client";
 
-export function meta({}: Route.MetaArgs) {
+export function meta(_args: Route.MetaArgs) {
   return [
     { title: "New React Router App" },
     { name: "description", content: "Welcome to React Router!" },
   ];
 }
 
-export function loader({ context }: Route.LoaderArgs) {
-  return { message: context.cloudflare.env.VALUE_FROM_CLOUDFLARE };
+export async function loader({ context }: Route.LoaderArgs) {
+  const res = await client.hello.$get();
+  const hello = await res.json();
+  return {
+    hello: hello.message
+  };
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
-  return <Welcome message={loaderData.message} />;
+  return (
+      <div>
+        {loaderData.hello}
+      </div>
+  )
 }
