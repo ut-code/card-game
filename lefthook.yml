@@ -1,0 +1,11 @@
+pre-commit:
+  parallel: true
+  jobs:
+    - name: biome lint
+      run: "bun run check:lint"
+
+    - name: biome format
+      run: "bun run check:format"
+
+    - name: biome check
+      run: "bun run check"

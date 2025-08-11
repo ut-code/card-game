@@ -1,7 +1,15 @@
 {
 	"name": "card-game",
 	"module": "index.ts",
-	"type": "module",
+	"devDependencies": {
+		"@biomejs/biome": "2.1.4",
+		"@types/bun": "latest",
+		"lefthook": "^1.12.2",
+		"vite": "^7.0.6"
+	},
+	"peerDependencies": {
+		"typescript": "^5"
+	},
 	"private": true,
 	"scripts": {
 		"dev": "bun run --filter='@apps/{frontend,backend}' dev",
@@ -14,15 +22,7 @@
 		"check:format": "bunx --bun biome format .",
 		"check:lint": "bunx --bun biome lint ."
 	},
-	"devDependencies": {
-		"@biomejs/biome": "2.1.4",
-		"@types/bun": "latest",
-		"vite": "^7.0.6"
-	},
-	"peerDependencies": {
-		"typescript": "^5"
-	},
-	"dependencies": {},
+	"type": "module",
 	"workspaces": [
 		"apps/*"
 	]
