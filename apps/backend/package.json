@@ -1,20 +1,20 @@
 {
-  "name": "@apps/backend",
-  "type": "module",
-  "version": "0.0.0",
-  "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy --minify",
-    "cf-typegen": "wrangler types --env-interface CloudflareBindings"
-  },
-  "dependencies": {
-    "hono": "^4.8.12"
-  },
-  "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250214.0",
-    "wrangler": "^4.4.0"
-  },
-  "exports": {
-    ".": "./src/index.ts"
-  }
+	"name": "@apps/backend",
+	"type": "module",
+	"version": "0.0.0",
+	"scripts": {
+		"dev": "wrangler dev",
+		"deploy": "wrangler deploy --minify",
+		"cf-typegen": "wrangler types --env-interface CloudflareBindings"
+	},
+	"dependencies": {
+		"hono": "^4.8.12"
+	},
+	"devDependencies": {
+		"@cloudflare/workers-types": "^4.20250214.0",
+		"wrangler": "^4.4.0"
+	},
+	"exports": {
+		".": "./src/index.ts"
+	}
 }

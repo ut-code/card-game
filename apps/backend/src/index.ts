@@ -3,12 +3,15 @@ import { cors } from "hono/cors";
 
 const app = new Hono();
 
-app.use("*", cors({
-  origin: "*"
-}));
+app.use(
+	"*",
+	cors({
+		origin: "*",
+	}),
+);
 
 const route = app.get("/hello", (c) => {
-  return c.json({ message: "Hello Hono!" })
+	return c.json({ message: "Hello Hono!" });
 });
 
 export type AppType = typeof route;
