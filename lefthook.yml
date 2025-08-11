@@ -5,7 +5,8 @@ pre-commit:
       run: "bun run check:lint"
 
     - name: biome format
-      run: "bun run check:format"
+      run: "bun run fix:format"
+      stage_fixed: true
 
     - name: biome check
       run: "bun run check"
