@@ -10,7 +10,7 @@ const app = new Hono()
 	})
 	.get(
 		"/ws",
-		upgradeWebSocket((c) => {
+		upgradeWebSocket((_c) => {
 			return {
 				onMessage: (evt, ws) => {
 					console.log(`Message from client: ${evt.data}`);
