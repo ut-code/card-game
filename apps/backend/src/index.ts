@@ -1,18 +1,28 @@
 import { Hono } from "hono";
-import { cors } from "hono/cors";
+import { upgradeWebSocket } from "hono/cloudflare-workers";
 
-const app = new Hono();
+const app = new Hono()
+	.basePath("/api")
+	.get("/hello", (c) => {
+		return c.json({
+			message: "Hello from Hono!",
+		});
+	})
+	.get(
+		"/ws",
+		upgradeWebSocket((c) => {
+			return {
+				onMessage: (evt, ws) => {
+					console.log(`Message from client: ${evt.data}`);
+					ws.send('{"type":"pong"}');
+				},
+				onClose: () => {
+					console.log("Connection closed");
+				},
+			};
+		}),
+	);
 
-app.use(
-	"*",
-	cors({
-		origin: "*",
-	}),
-);
+export type AppType = typeof app;
 
-const route = app.get("/hello", (c) => {
-	return c.json({ message: "Hello Hono!" });
-});
-
-export type AppType = typeof route;
 export default app;
