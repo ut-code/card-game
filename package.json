@@ -17,7 +17,7 @@
 		"dev:backend": "cd ./apps/backend && bun run dev",
 		"fix": "bunx --bun biome check --write .",
 		"fix:format": "bunx --bun biome format --write .",
-		"fix:lint": "bunx --bun biome lint --fix .",
+		"fix:lint": "bunx --bun biome lint --write .",
 		"check": "bunx --bun biome check .",
 		"check:format": "bunx --bun biome format .",
 		"check:lint": "bunx --bun biome lint ."

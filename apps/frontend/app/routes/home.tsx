@@ -1,4 +1,4 @@
-import { client } from "~/lib/client";
+import { client } from "../lib/client";
 import type { Route } from "./+types/home";
 
 export function meta(_args: Route.MetaArgs) {
