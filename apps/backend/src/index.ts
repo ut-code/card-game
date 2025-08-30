@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { upgradeWebSocket } from "hono/cloudflare-workers";
 import { getSignedCookie, setSignedCookie } from "hono/cookie";
+import { cors } from "hono/cors";
 
 // Note: In a real application, you would use a proper database or KV store.
 const rooms: Record<string, { id: string; name: string; players: string[] }> =
@@ -11,6 +12,13 @@ const users: Record<string, { id: string; name: string }> = {};
 const secret = "hoge";
 
 const app = new Hono()
+	.use(
+		"*",
+		cors({
+			origin: "http://localhost:5173",
+			credentials: true,
+		}),
+	)
 	.basePath("/api")
 	// User routes
 	.get("/users/me", async (c) => {
@@ -39,7 +47,7 @@ const app = new Hono()
 		await setSignedCookie(c, "userId", userId, secret, {
 			httpOnly: true,
 			maxAge: 60 * 60 * 24 * 7, // 1 week
-			secure: true,
+			secure: false, // Allow cookie over HTTP in development
 			sameSite: "Lax",
 		});
 		return c.json(users[userId], 201);
@@ -109,6 +117,21 @@ const app = new Hono()
 				},
 				onClose: () => {
 					console.log(`Connection closed for room: ${roomId}`);
+				},
+			};
+		}),
+	)
+	.get(
+		"/ws",
+		upgradeWebSocket(() => {
+			console.log("WebSocket connection opened");
+			return {
+				onMessage: (evt, ws) => {
+					console.log(`Message from client: ${evt.data}`);
+					ws.send(JSON.stringify({ type: "pong" }));
+				},
+				onClose: () => {
+					console.log("Connection closed");
 				},
 			};
 		}),

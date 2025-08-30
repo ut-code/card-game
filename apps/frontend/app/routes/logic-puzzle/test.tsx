@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { socket } from "../../lib/client";
+import { client } from "../../lib/client";
+
+const socket = client.api.ws.$ws();
 
 const LogicPuzzleTest = () => {
 	const [message, setMessage] = useState<string>("");
