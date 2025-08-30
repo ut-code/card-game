@@ -1,5 +1,6 @@
 import type { InferResponseType } from "hono/client";
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import { client } from "../../lib/client";
 
 type User = InferResponseType<typeof client.api.users.me.$get>;
@@ -10,6 +11,7 @@ export default function Lobby() {
 	const [userName, setUserName] = useState("");
 	const [rooms, setRooms] = useState<Room[]>([]);
 	const [newRoomName, setNewRoomName] = useState("");
+	const navigate = useNavigate();
 
 	useEffect(() => {
 		const fetchUser = async () => {
@@ -51,6 +53,15 @@ export default function Lobby() {
 			const newRoom = await res.json();
 			setRooms([...rooms, newRoom]);
 			setNewRoomName("");
+		}
+	};
+
+	const handleJoinRoom = async (roomId: string) => {
+		const res = await client.api.rooms[":roomId"].join.$post({
+			param: { roomId },
+		});
+		if (res.ok) {
+			navigate(`/logic-puzzle/room/${roomId}`);
 		}
 	};
 
@@ -128,7 +139,11 @@ export default function Lobby() {
 									<h3 className="text-xl">{room.name}</h3>
 									<p>{room.players.length} players</p>
 									<div className="card-actions justify-end">
-										<button className="btn btn-secondary" type="button">
+										<button
+											className="btn btn-secondary"
+											type="button"
+											onClick={() => handleJoinRoom(room.id)}
+										>
 											Join
 										</button>
 									</div>

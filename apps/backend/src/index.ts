@@ -73,7 +73,7 @@ const app = new Hono()
 			return c.json({ error: "Room not found" }, 404);
 		}
 		// TODO: Return actual game state
-		return c.json(room);
+		return c.json<{ id: string; name: string; players: string[] }>(room);
 	})
 	.post("/rooms/:roomId/join", async (c) => {
 		const { roomId } = c.req.param();
@@ -138,5 +138,4 @@ const app = new Hono()
 	);
 
 export type AppType = typeof app;
-
 export default app;
