@@ -5,12 +5,20 @@ import { type GameState, Magic, type MoveAction } from "./magic";
 
 type Bindings = {
 	MAGIC: DurableObjectNamespace;
+	MAGIC_ROOMS: KVNamespace;
+	MAGIC_USERS: KVNamespace;
 };
 
-// Note: In a real application, you would use a proper database or KV store.
-const rooms: Record<string, { id: string; name: string; players: string[] }> =
-	{};
-const users: Record<string, { id: string; name: string }> = {};
+export type User = {
+	id: string;
+	name: string;
+};
+
+export type Room = {
+	id: string;
+	name: string;
+	players: string[];
+};
 
 // TODO: 環境変数にする
 const secret = "hoge";
@@ -33,7 +41,10 @@ const app = new Hono<{ Bindings: Bindings }>()
 			console.error("User ID cookie is missing or invalid");
 			return c.json({ error: "User ID is missing" }, 400);
 		}
-		const user = users[userId];
+		const user = (await c.env.MAGIC_USERS.get(userId, { type: "json" })) as {
+			id: string;
+			name: string;
+		} | null;
 		if (!user) {
 			console.error(`User not found for ID: ${userId}`);
 			return c.json({ error: "User not found" }, 404);
@@ -46,7 +57,8 @@ const app = new Hono<{ Bindings: Bindings }>()
 			return c.json({ error: "Name is required" }, 400);
 		}
 		const userId = `user-${crypto.randomUUID()}`;
-		users[userId] = { id: userId, name };
+		const user = { id: userId, name };
+		await c.env.MAGIC_USERS.put(userId, JSON.stringify({ id: userId, name }));
 
 		await setSignedCookie(c, "userId", userId, secret, {
 			httpOnly: true,
@@ -54,12 +66,16 @@ const app = new Hono<{ Bindings: Bindings }>()
 			secure: false, // Allow cookie over HTTP in development
 			sameSite: "Lax",
 		});
-		return c.json(users[userId], 201);
+		return c.json(user, 201);
 	})
 
-	// Room routes (remains the same)
-	.get("/rooms", (c) => {
-		return c.json(Object.values(rooms));
+	// Room routes
+	.get("/rooms", async (c) => {
+		const list = await c.env.MAGIC_ROOMS.list();
+		const rooms = await Promise.all(
+			list.keys.map((k) => c.env.MAGIC_ROOMS.get(k.name, { type: "json" })),
+		);
+		return c.json(rooms.filter(Boolean));
 	})
 	.post("/rooms/create", async (c) => {
 		const { name } = await c.req.json<{ name: string }>();
@@ -67,12 +83,13 @@ const app = new Hono<{ Bindings: Bindings }>()
 			return c.json({ error: "Room name is required" }, 400);
 		}
 		const roomId = `room-${crypto.randomUUID()}`;
-		rooms[roomId] = { id: roomId, name, players: [] };
-		return c.json(rooms[roomId], 201);
+		const room = { id: roomId, name, players: [] };
+		await c.env.MAGIC_ROOMS.put(roomId, JSON.stringify(room));
+		return c.json(room, 201);
 	})
-	.get("/rooms/:roomId", (c) => {
+	.get("/rooms/:roomId", async (c) => {
 		const { roomId } = c.req.param();
-		const room = rooms[roomId];
+		const room = await c.env.MAGIC_ROOMS.get(roomId, { type: "json" });
 		if (!room) {
 			return c.json({ error: "Room not found" }, 404);
 		}
@@ -84,7 +101,11 @@ const app = new Hono<{ Bindings: Bindings }>()
 		if (!userId) {
 			return c.json({ error: "User not authenticated" }, 401);
 		}
-		const room = rooms[roomId];
+		const room = (await c.env.MAGIC_ROOMS.get(roomId, { type: "json" })) as {
+			id: string;
+			name: string;
+			players: string[];
+		} | null;
 		if (!room) {
 			return c.json({ error: "Room not found" }, 404);
 		}
@@ -99,11 +120,16 @@ const app = new Hono<{ Bindings: Bindings }>()
 		if (!userId) {
 			return c.json({ error: "User not authenticated" }, 401);
 		}
-		const room = rooms[roomId];
+		const room = (await c.env.MAGIC_ROOMS.get(roomId, { type: "json" })) as {
+			id: string;
+			name: string;
+			players: string[];
+		} | null;
 		if (!room) {
 			return c.json({ error: "Room not found" }, 404);
 		}
 		room.players = room.players.filter((p) => p !== userId);
+		await c.env.MAGIC_ROOMS.put(roomId, JSON.stringify(room));
 		return c.json({ message: "Left room successfully" });
 	})
 
