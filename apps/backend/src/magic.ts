@@ -11,8 +11,8 @@ export type Operation = "plus" | "sub";
 
 export type GameState = {
 	players: string[];
-	round: number;
-	turn: number;
+	round: number; // 0-indexed
+	turn: number; // 0 ~ players.length-1 players[turn]'s turn
 	board: (number | null)[][];
 	boardSize: number;
 	winner: string | null;
@@ -195,6 +195,7 @@ export class Magic extends DurableObject {
 		return hand;
 	}
 
+	// TODO: ミッションの重複を避ける
 	getRandomMission() {
 		const missionKeys = Object.keys(missions);
 		const randomKey =
@@ -219,6 +220,12 @@ export class Magic extends DurableObject {
 		console.log("Making move:", player, x, y, num);
 
 		this.gameState.board[y][x] = this.computeCellResult(x, y, num, operation);
+
+		this.gameState.turn =
+			(this.gameState.turn + 1) % this.gameState.players.length;
+		if (this.gameState.turn === this.gameState.players.length) {
+			this.gameState.round += 1;
+		}
 
 		await this.ctx.storage.put("gameState", this.gameState);
 		this.broadcast({ type: "state", payload: this.gameState });
