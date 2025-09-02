@@ -1,5 +1,4 @@
 import { DurableObject } from "cloudflare:workers";
-import type { Env } from "hono";
 
 export type MoveAction = {
 	x: number;
@@ -20,8 +19,17 @@ export type GameState = {
 		[playerId: string]: number[];
 	};
 	missions: {
-		[playerId: string]: string[];
+		[playerId: string]: {
+			id: string;
+			description: string;
+		};
 	};
+};
+
+const missions: Record<string, string> = {
+	"0": "どこかの列の和が13",
+	"1": "どこかの行の和が11",
+	"2": "どこかの対角線の和が17",
 };
 
 interface Session {
@@ -33,7 +41,7 @@ export class Magic extends DurableObject {
 	gameState: GameState | undefined = undefined;
 	sessions: Session[] = [];
 
-	constructor(ctx: DurableObjectState, env: Env) {
+	constructor(ctx: DurableObjectState, env: unknown) {
 		super(ctx, env);
 		this.ctx.blockConcurrencyWhile(async () => {
 			this.gameState = await this.ctx.storage.get<GameState>("gameState");
@@ -135,13 +143,54 @@ export class Magic extends DurableObject {
 		}
 		if (
 			this.gameState &&
-			this.gameState.players.length < 2 &&
+			this.gameState.players.length !== 2 &&
 			!this.gameState.players.includes(playerId)
 		) {
 			this.gameState.players.push(playerId);
 			await this.ctx.storage.put("gameState", this.gameState);
 			this.broadcast({ type: "state", payload: this.gameState });
 		}
+		if (this.gameState && this.gameState.players.length === 2) {
+			this.startGame();
+		}
+	}
+
+	async startGame() {
+		if (!this.gameState) return;
+
+		// Initialize player hands and missions
+		for (const playerId of this.gameState.players) {
+			this.gameState.hands[playerId] = this.drawInitialHand();
+			this.gameState.missions[playerId] = this.getRandomMission();
+		}
+
+		await this.ctx.storage.put("gameState", this.gameState);
+		this.broadcast({ type: "state", payload: this.gameState });
+	}
+
+	drawInitialHand() {
+		if (!this.gameState) return [];
+		const hand = new Array(3); // TODO: 変更可能にする
+		for (let i = 0; i < hand.length; i++) {
+			const rand = Math.random();
+			if (rand < 0.4) {
+				hand[i] = 1;
+			} else if (rand < 0.6) {
+				hand[i] = 2;
+			} else if (rand < 0.8) {
+				hand[i] = 3;
+			} else {
+				hand[i] = 4;
+			}
+		}
+		return hand;
+	}
+
+	getRandomMission() {
+		const missionKeys = Object.keys(missions);
+		const randomKey =
+			missionKeys[Math.floor(Math.random() * missionKeys.length)];
+		return { id: randomKey, description: missions[randomKey] };
 	}
 
 	async makeMove(player: string, x: number, y: number) {

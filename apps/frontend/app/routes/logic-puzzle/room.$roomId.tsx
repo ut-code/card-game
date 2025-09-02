@@ -1,10 +1,13 @@
+/** biome-ignore-all lint/a11y/noStaticElementInteractions: TODO */
 /** biome-ignore-all lint/suspicious/noArrayIndexKey: TODO */
+/** biome-ignore-all lint/a11y/useKeyWithClickEvents: TODO */
 import type { GameState } from "@apps/backend";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { client } from "../../lib/client";
 
-// A simple component to render the game board
+// --- Game Components ---
+
 function GameBoard({
 	board,
 	onCellClick,
@@ -13,27 +16,52 @@ function GameBoard({
 	onCellClick: (x: number, y: number) => void;
 }) {
 	return (
-		<div className="aspect-square bg-base-300 grid grid-cols-3 gap-2 p-2 rounded-lg">
+		<div className="aspect-square bg-base-300 grid grid-cols-3 gap-2 p-2 rounded-lg shadow-inner">
 			{board.map((row, y) =>
 				row.map((cell, x) => (
-					<button
-						key={`cell-${x}-${y}`}
-						type="button"
-						className="aspect-square bg-base-100 rounded flex items-center justify-center text-6xl font-bold cursor-pointer hover:bg-base-200"
+					<div
+						key={`${x}-${y}`}
+						className="aspect-square bg-base-100 rounded flex items-center justify-center text-6xl font-bold cursor-pointer hover:bg-primary hover:text-primary-content transition-colors duration-150"
 						onClick={() => onCellClick(x, y)}
-						onKeyDown={(e) => {
-							if (e.key === "Enter" || e.key === " ") {
-								onCellClick(x, y);
-							}
-						}}
 					>
 						{cell}
-					</button>
+					</div>
 				)),
 			)}
 		</div>
 	);
 }
+
+function Hand({ cards, title }: { cards: number[]; title: string }) {
+	return (
+		<div>
+			<h3 className="text-lg font-bold mb-2">{title}</h3>
+			<div className="flex gap-2 justify-center p-2 bg-base-200 rounded-lg">
+				{cards.map((card, i) => (
+					<div
+						key={i}
+						className="card w-16 h-24 bg-primary text-primary-content shadow-lg flex items-center justify-center"
+					>
+						<span className="text-4xl font-bold">{card}</span>
+					</div>
+				))}
+			</div>
+		</div>
+	);
+}
+
+function Mission({ description }: { description: string }) {
+	return (
+		<div className="card bg-secondary text-secondary-content shadow-md">
+			<div className="card-body items-center text-center">
+				<h2 className="card-title">Your Mission</h2>
+				<p>{description}</p>
+			</div>
+		</div>
+	);
+}
+
+// --- Main Page Component ---
 
 export default function RoomPage() {
 	const { roomId } = useParams();
@@ -41,9 +69,11 @@ export default function RoomPage() {
 
 	const [userId, setUserId] = useState<string | null>(null);
 	const [gameState, setGameState] = useState<GameState | null>(null);
-	const [isConnected, setIsConnected] = useState(false);
-	const [logs, setLogs] = useState<string[]>([]);
 	const ws = useRef<WebSocket | null>(null);
+
+	const opponentId = useMemo(() => {
+		return gameState?.players.find((p) => p !== userId) ?? null;
+	}, [gameState, userId]);
 
 	// Fetch user ID on component mount
 	useEffect(() => {
@@ -53,7 +83,6 @@ export default function RoomPage() {
 				const user = await res.json();
 				setUserId(user.id);
 			} else {
-				// If not logged in, redirect to create user or lobby
 				navigate("/logic-puzzle/lobby");
 			}
 		};
@@ -64,9 +93,8 @@ export default function RoomPage() {
 	useEffect(() => {
 		if (!roomId || !userId) return;
 
-		// Determine WebSocket protocol
 		const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-		// TODO
+		// TODO: This should be configurable via environment variables
 		const host = "localhost:8787";
 		const wsUrl = `${proto}//${host}/api/games/${roomId}/ws?playerId=${userId}`;
 
@@ -74,115 +102,84 @@ export default function RoomPage() {
 		ws.current = socket;
 
 		socket.onopen = () => {
-			setIsConnected(true);
-			setLogs((prev) => [...prev, "[SYSTEM] Connected to server."]);
+			console.log("[WS] Connected to server.");
 		};
+		socket.onclose = () => {
+			console.log("[WS] Disconnected from server.");
+		};
+		socket.onerror = (err) => console.error("[WS] WebSocket error:", err);
 
 		socket.onmessage = (event) => {
+			console.log("[WS] Message from server:", event.data);
 			const message = JSON.parse(event.data);
-			setLogs((prev) => [...prev, `[SERVER] ${event.data}`]);
-
 			if (message.type === "state") {
 				setGameState(message.payload);
 			}
 			if (message.error) {
-				setLogs((prev) => [...prev, `[ERROR] ${message.error}`]);
+				console.error("[WS] Server error:", message.error);
 			}
 		};
 
-		socket.onclose = () => {
-			setIsConnected(false);
-			setLogs((prev) => [...prev, "[SYSTEM] Disconnected."]);
-		};
-
-		socket.onerror = (err) => {
-			console.error("WebSocket error:", err);
-			setLogs((prev) => [...prev, "[SYSTEM] WebSocket error."]);
-		};
-
-		// Cleanup on component unmount
-		return () => {
-			socket.close();
-		};
+		return () => socket.close();
 	}, [roomId, userId]);
 
 	const sendWsMessage = (type: string, payload?: object) => {
 		if (ws.current?.readyState === WebSocket.OPEN) {
 			const message = JSON.stringify({ type, payload });
+			console.log("[WS] Sending message:", message);
 			ws.current.send(message);
-			setLogs((prev) => [...prev, `[CLIENT] ${message}`]);
 		}
-	};
-
-	const handleInitializeGame = () => {
-		sendWsMessage("initialize");
 	};
 
 	const handleCellClick = (x: number, y: number) => {
 		sendWsMessage("makeMove", { x, y });
 	};
 
-	if (!gameState) {
+	// --- Render Logic ---
+
+	if (!gameState || !userId) {
 		return (
 			<div className="p-8 text-center">
-				<h1 className="text-3xl font-bold">Loading Game...</h1>
-				<p>Connecting to server...</p>
-				<button
-					className="btn btn-primary mt-4"
-					onClick={handleInitializeGame}
-					type="button"
-				>
-					Initialize New Game
-				</button>
+				<h1>Loading...</h1>
+			</div>
+		);
+	}
+
+	if (gameState.players.length < 2) {
+		return (
+			<div className="p-8 text-center">
+				<h1 className="text-3xl font-bold">Waiting for opponent...</h1>
+				<p className="mt-4">Room ID: {roomId}</p>
+				<div className="mt-8">
+					<span className="loading loading-lg loading-spinner"></span>
+				</div>
 			</div>
 		);
 	}
 
 	return (
-		<div className="p-8 grid grid-cols-1 md:grid-cols-3 gap-8">
-			<div className="md:col-span-2">
-				<div className="card bg-base-100 shadow-xl">
-					<div className="card-body">
-						<h1 className="card-title text-4xl">Game Room: {roomId}</h1>
-						<div className="divider" />
-						<GameBoard board={gameState.board} onCellClick={handleCellClick} />
-					</div>
+		<div className="p-4 md:p-8 flex flex-col gap-4">
+			{/* Opponent's Info */}
+			{opponentId && (
+				<div className="flex justify-between items-center">
+					<p>Opponent: {opponentId}</p>
+					<p>Cards: {gameState.hands[opponentId]?.length ?? 0}</p>
 				</div>
+			)}
+
+			{/* Game Board */}
+			<div className="w-full max-w-md mx-auto">
+				<GameBoard board={gameState.board} onCellClick={handleCellClick} />
 			</div>
 
-			<div className="card bg-base-100 shadow-xl">
-				<div className="card-body">
-					<h2 className="card-title">Info</h2>
-					<p>Connection: {isConnected ? "✅ Connected" : "❌ Disconnected"}</p>
-					<p>Your Player ID: {userId}</p>
-					<div className="divider" />
-					<h2 className="card-title">Game State</h2>
-					<p>Winner: {gameState.winner ?? "None"}</p>
-					<p>Next Turn: {gameState.players[gameState.turn] ?? "N/A"}</p>
-					<div className="divider" />
-					<h2 className="card-title">Players</h2>
-					<ul className="list-disc list-inside">
-						{gameState.players.map((player) => (
-							<li key={player}>{player}</li>
-						))}
-					</ul>
-					<div className="divider" />
-					<h2 className="card-title">Logs</h2>
-					<div className="bg-base-200 rounded-lg p-2 h-48 overflow-y-auto text-sm font-mono">
-						{logs.map((log, i) => (
-							<div key={i}>{log}</div>
-						))}
-					</div>
-					<div className="card-actions justify-end mt-4">
-						<button
-							className="btn btn-secondary"
-							onClick={handleInitializeGame}
-							type="button"
-						>
-							Reset Game (for development purposes)
-						</button>
-					</div>
-				</div>
+			{/* Player's Info */}
+			<div className="flex flex-col items-center gap-4 mt-4">
+				{gameState.missions[userId] && (
+					<Mission description={gameState.missions[userId].description} />
+				)}
+				{gameState.hands[userId] && (
+					<Hand cards={gameState.hands[userId]} title="Your Hand" />
+				)}
 			</div>
 		</div>
 	);
