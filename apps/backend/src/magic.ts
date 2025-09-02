@@ -7,7 +7,7 @@ export type MoveAction = {
 	num: number;
 };
 
-export type Operation = "plus" | "sub";
+export type Operation = "add" | "sub";
 
 export type GameState = {
 	players: string[];
@@ -268,7 +268,7 @@ export class Magic extends DurableObject {
 		const prev = this.gameState.board[y][x] ?? 0;
 
 		switch (operation) {
-			case "plus":
+			case "add":
 				return prev + num;
 			case "sub":
 				return prev - num;

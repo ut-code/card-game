@@ -4,6 +4,7 @@
 import type { GameState, MoveAction } from "@apps/backend";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
+import type { Operation } from "../../../../backend/src/magic";
 import { client } from "../../lib/client";
 
 // --- Game Components ---
@@ -36,10 +37,12 @@ function Hand({
 	cards,
 	title,
 	onCardClick,
+	selectedNumIndex,
 }: {
 	cards: number[];
 	title: string;
 	onCardClick: (i: number) => void;
+	selectedNumIndex: number | null;
 }) {
 	return (
 		<div>
@@ -48,12 +51,39 @@ function Hand({
 				{cards.map((card, i) => (
 					<div
 						key={i}
-						className="card w-16 h-24 bg-primary text-primary-content shadow-lg flex items-center justify-center cursor-pointer hover:bg-secondary transition-colors duration-150"
+						className={`card w-16 h-24 ${selectedNumIndex === i ? "bg-accent" : "bg-primary"} text-primary-content shadow-lg flex items-center justify-center cursor-pointer hover:bg-accent transition-colors duration-150`}
 						onClick={() => onCardClick(i)}
 					>
 						<span className="text-4xl font-bold">{card}</span>
 					</div>
 				))}
+			</div>
+		</div>
+	);
+}
+
+function Operations({
+	onOperationClick,
+	selectedOperation,
+}: {
+	onOperationClick: (name: Operation) => void;
+	selectedOperation: Operation;
+}) {
+	return (
+		<div>
+			<div className="flex gap-2 justify-center p-2 bg-base-200 rounded-lg">
+				<div
+					className={`card w-12 h-12 ${selectedOperation === "add" ? "bg-accent" : "bg-primary"} text-primary-content shadow-lg flex items-center justify-center cursor-pointer hover:bg-accent transition-colors duration-150`}
+					onClick={() => onOperationClick("add")}
+				>
+					<span className="text-4xl font-bold">+</span>
+				</div>
+				<div
+					className={`card w-12 h-12 ${selectedOperation === "sub" ? "bg-accent" : "bg-primary"} text-primary-content shadow-lg flex items-center justify-center cursor-pointer hover:bg-accent transition-colors duration-150`}
+					onClick={() => onOperationClick("sub")}
+				>
+					<span className="text-4xl font-bold">-</span>
+				</div>
 			</div>
 		</div>
 	);
@@ -82,7 +112,8 @@ export default function RoomPage() {
 
 	const opponentId = gameState?.players.find((p) => p !== userId) ?? null;
 
-	const [selectedNum, setSelectedNum] = useState<number | null>(null);
+	const [selectedNumIndex, setSelectedNumIndex] = useState<number | null>(null);
+	const [selectedOperation, setSelectedOperation] = useState<Operation>("add");
 
 	// Fetch user ID on component mount
 	useEffect(() => {
@@ -141,15 +172,16 @@ export default function RoomPage() {
 	};
 
 	const handleCellClick = (x: number, y: number) => {
-		if (!selectedNum) return;
+		if (!gameState || !userId || selectedNumIndex === null) return;
 		// TODO: 正しいoperationとnumをいれる
-		sendWsMessage("makeMove", { x, y, operation: "plus", num: selectedNum });
-		setSelectedNum(null);
-	};
-
-	const handleCardClick = (i: number) => {
-		if (!gameState || !userId) return;
-		setSelectedNum(gameState.hands[userId][i]);
+		sendWsMessage("makeMove", {
+			x,
+			y,
+			operation: selectedOperation,
+			num: gameState.hands[userId][selectedNumIndex],
+		});
+		setSelectedNumIndex(null);
+		setSelectedOperation("add");
 	};
 
 	// --- Render Logic ---
@@ -178,29 +210,39 @@ export default function RoomPage() {
 		<div className="p-4 md:p-8 flex flex-col gap-4">
 			{/* Opponent's Info */}
 			{opponentId && (
-				<div className="flex justify-between items-center">
-					<p>Opponent: {opponentId}</p>
-					<p>Cards: {gameState.hands[opponentId]?.length ?? 0}</p>
-				</div>
+				<>
+					<div className="flex justify-between items-center">
+						<p>Opponent: {opponentId}</p>
+						<p>Cards: {gameState.hands[opponentId]?.length ?? 0}</p>
+					</div>
+					<p className="card bg-secondary text-secondary-content shadow-md text-center">
+						Opponent Mission: {gameState.missions[opponentId]?.description}
+					</p>
+				</>
 			)}
-
 			{/* Game Board */}
 			<div className="w-full max-w-md mx-auto">
 				<GameBoard board={gameState.board} onCellClick={handleCellClick} />
 			</div>
-
-			{/* Player's Info */}
+			{/* Player\'s Info */}
 			<div className="flex flex-col items-center gap-4 mt-4">
 				{gameState.missions[userId] && (
 					<Mission description={gameState.missions[userId].description} />
 				)}
-				{gameState.hands[userId] && (
-					<Hand
-						cards={gameState.hands[userId]}
-						title="Your Hand"
-						onCardClick={handleCardClick}
+				<div className="flex flex-row gap-4">
+					{gameState.hands[userId] && (
+						<Hand
+							cards={gameState.hands[userId]}
+							title="Your Hand"
+							onCardClick={setSelectedNumIndex}
+							selectedNumIndex={selectedNumIndex}
+						/>
+					)}
+					<Operations
+						onOperationClick={setSelectedOperation}
+						selectedOperation={selectedOperation}
 					/>
-				)}
+				</div>
 			</div>
 		</div>
 	);
