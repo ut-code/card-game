@@ -117,11 +117,7 @@ function TurnDisplay({
 		<div className="text-center p-2 rounded-lg bg-base-200 shadow mb-4">
 			<p className="text-sm font-bold">Round {round + 1}</p>
 			<div
-				className={`mt-1 text-lg font-bold p-2 rounded-md transition-all ${
-					isMyTurn
-						? "bg-primary text-primary-content animate-pulse"
-						: "bg-base-100"
-				}`}
+				className={`mt-1 text-lg font-bold p-2 rounded-md transition-all ${isMyTurn ? "bg-primary text-primary-content animate-pulse" : "bg-base-100"}`}
 			>
 				{isMyTurn ? "Your Turn" : "Opponent's Turn"}
 			</div>
@@ -244,7 +240,8 @@ export default function RoomPage() {
 						<p>Cards: {gameState.hands[opponentId]?.length ?? 0}</p>
 					</div>
 					<p className="card bg-secondary text-secondary-content shadow-md text-center">
-						Opponent Mission: {gameState.missions[opponentId]?.description}
+						Opponent Mission:{" "}
+						{gameState.missions[opponentId]?.mission.description}
 					</p>
 				</>
 			)}
