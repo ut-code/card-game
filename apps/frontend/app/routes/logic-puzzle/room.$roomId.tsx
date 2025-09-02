@@ -1,8 +1,8 @@
 /** biome-ignore-all lint/a11y/noStaticElementInteractions: TODO */
 /** biome-ignore-all lint/suspicious/noArrayIndexKey: TODO */
 /** biome-ignore-all lint/a11y/useKeyWithClickEvents: TODO */
-import type { GameState } from "@apps/backend";
-import { useEffect, useMemo, useRef, useState } from "react";
+import type { GameState, MoveAction } from "@apps/backend";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { client } from "../../lib/client";
 
@@ -12,7 +12,7 @@ function GameBoard({
 	board,
 	onCellClick,
 }: {
-	board: (string | null)[][];
+	board: (number | null)[][];
 	onCellClick: (x: number, y: number) => void;
 }) {
 	return (
@@ -32,7 +32,15 @@ function GameBoard({
 	);
 }
 
-function Hand({ cards, title }: { cards: number[]; title: string }) {
+function Hand({
+	cards,
+	title,
+	onCardClick,
+}: {
+	cards: number[];
+	title: string;
+	onCardClick: (i: number) => void;
+}) {
 	return (
 		<div>
 			<h3 className="text-lg font-bold mb-2">{title}</h3>
@@ -40,7 +48,8 @@ function Hand({ cards, title }: { cards: number[]; title: string }) {
 				{cards.map((card, i) => (
 					<div
 						key={i}
-						className="card w-16 h-24 bg-primary text-primary-content shadow-lg flex items-center justify-center"
+						className="card w-16 h-24 bg-primary text-primary-content shadow-lg flex items-center justify-center cursor-pointer hover:bg-secondary transition-colors duration-150"
+						onClick={() => onCardClick(i)}
 					>
 						<span className="text-4xl font-bold">{card}</span>
 					</div>
@@ -71,9 +80,9 @@ export default function RoomPage() {
 	const [gameState, setGameState] = useState<GameState | null>(null);
 	const ws = useRef<WebSocket | null>(null);
 
-	const opponentId = useMemo(() => {
-		return gameState?.players.find((p) => p !== userId) ?? null;
-	}, [gameState, userId]);
+	const opponentId = gameState?.players.find((p) => p !== userId) ?? null;
+
+	const [selectedNum, setSelectedNum] = useState<number | null>(null);
 
 	// Fetch user ID on component mount
 	useEffect(() => {
@@ -123,7 +132,7 @@ export default function RoomPage() {
 		return () => socket.close();
 	}, [roomId, userId]);
 
-	const sendWsMessage = (type: string, payload?: object) => {
+	const sendWsMessage = (type: string, payload?: MoveAction) => {
 		if (ws.current?.readyState === WebSocket.OPEN) {
 			const message = JSON.stringify({ type, payload });
 			console.log("[WS] Sending message:", message);
@@ -132,7 +141,15 @@ export default function RoomPage() {
 	};
 
 	const handleCellClick = (x: number, y: number) => {
-		sendWsMessage("makeMove", { x, y });
+		if (!selectedNum) return;
+		// TODO: 正しいoperationとnumをいれる
+		sendWsMessage("makeMove", { x, y, operation: "plus", num: selectedNum });
+		setSelectedNum(null);
+	};
+
+	const handleCardClick = (i: number) => {
+		if (!gameState || !userId) return;
+		setSelectedNum(gameState.hands[userId][i]);
 	};
 
 	// --- Render Logic ---
@@ -178,7 +195,11 @@ export default function RoomPage() {
 					<Mission description={gameState.missions[userId].description} />
 				)}
 				{gameState.hands[userId] && (
-					<Hand cards={gameState.hands[userId]} title="Your Hand" />
+					<Hand
+						cards={gameState.hands[userId]}
+						title="Your Hand"
+						onCardClick={handleCardClick}
+					/>
 				)}
 			</div>
 		</div>
