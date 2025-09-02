@@ -181,18 +181,23 @@ export class Magic extends DurableObject {
 		if (!this.gameState) return [];
 		const hand = new Array(3); // TODO: 変更可能にする
 		for (let i = 0; i < hand.length; i++) {
-			const rand = Math.random();
-			if (rand < 0.4) {
-				hand[i] = 1;
-			} else if (rand < 0.6) {
-				hand[i] = 2;
-			} else if (rand < 0.8) {
-				hand[i] = 3;
-			} else {
-				hand[i] = 4;
-			}
+			hand[i] = this.drawCard();
 		}
 		return hand;
+	}
+
+	// TODO: 調整可能にする
+	drawCard() {
+		const rand = Math.random();
+		if (rand < 0.4) {
+			return 1;
+		} else if (rand < 0.6) {
+			return 2;
+		} else if (rand < 0.8) {
+			return 3;
+		} else {
+			return 4;
+		}
 	}
 
 	// TODO: ミッションの重複を避ける
@@ -226,6 +231,14 @@ export class Magic extends DurableObject {
 		if (this.gameState.turn === this.gameState.players.length) {
 			this.gameState.round += 1;
 		}
+
+		const prevHand = this.gameState.hands[player];
+
+		this.gameState.hands[player] = prevHand.toSpliced(
+			prevHand.indexOf(num),
+			1,
+			this.drawCard(),
+		);
 
 		await this.ctx.storage.put("gameState", this.gameState);
 		this.broadcast({ type: "state", payload: this.gameState });
