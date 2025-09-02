@@ -24,7 +24,7 @@ export type GameState = {
 	missions: {
 		[playerId: string]: {
 			id: string;
-			description: Mission;
+			mission: Mission;
 		};
 	};
 };
@@ -200,7 +200,7 @@ export class Magic extends DurableObject {
 		const missionKeys = Object.keys(missions);
 		const randomKey =
 			missionKeys[Math.floor(Math.random() * missionKeys.length)];
-		return { id: randomKey, description: missions[randomKey] };
+		return { id: randomKey, mission: missions[randomKey] };
 	}
 
 	async makeMove(

@@ -225,7 +225,9 @@ export default function RoomPage() {
 			{/* Player's Info */}
 			<div className="flex flex-col items-center gap-4 mt-4">
 				{gameState.missions[userId] && (
-					<Mission description={gameState.missions[userId].description} />
+					<Mission
+						description={gameState.missions[userId].mission.description}
+					/>
 				)}
 				{gameState.hands[userId] && (
 					<Hand
