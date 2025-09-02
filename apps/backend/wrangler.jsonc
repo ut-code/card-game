@@ -10,7 +10,17 @@
 				"class_name": "Magic"
 			}
 		]
-	}
+	},
+	"kv_namespaces": [
+		{
+			"binding": "MAGIC_USERS",
+			"id": "magic_users"
+		},
+		{
+			"binding": "MAGIC_ROOMS",
+			"id": "magic_rooms"
+		}
+	]
 	// "vars": {
 	//   "MY_VAR": "my-variable"
 	// },

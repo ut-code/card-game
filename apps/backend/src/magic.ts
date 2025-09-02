@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { type Mission, missions } from "./mission";
 
 export type MoveAction = {
 	x: number;
@@ -11,8 +12,8 @@ export type Operation = "add" | "sub";
 
 export type GameState = {
 	players: string[];
-	round: number;
-	turn: number;
+	round: number; // 0-indexed
+	turn: number; // 0 ~ players.length-1 players[turn]'s turn
 	board: (number | null)[][];
 	boardSize: number;
 	winner: string | null;
@@ -23,15 +24,9 @@ export type GameState = {
 	missions: {
 		[playerId: string]: {
 			id: string;
-			description: string;
+			mission: Mission;
 		};
 	};
-};
-
-const missions: Record<string, string> = {
-	"0": "どこかの列の和が13",
-	"1": "どこかの行の和が11",
-	"2": "どこかの対角線の和が17",
 };
 
 interface Session {
@@ -181,25 +176,31 @@ export class Magic extends DurableObject {
 		if (!this.gameState) return [];
 		const hand = new Array(3); // TODO: 変更可能にする
 		for (let i = 0; i < hand.length; i++) {
-			const rand = Math.random();
-			if (rand < 0.4) {
-				hand[i] = 1;
-			} else if (rand < 0.6) {
-				hand[i] = 2;
-			} else if (rand < 0.8) {
-				hand[i] = 3;
-			} else {
-				hand[i] = 4;
-			}
+			hand[i] = this.drawCard();
 		}
 		return hand;
 	}
 
+	// TODO: 調整可能にする
+	drawCard() {
+		const rand = Math.random();
+		if (rand < 0.4) {
+			return 1;
+		} else if (rand < 0.6) {
+			return 2;
+		} else if (rand < 0.8) {
+			return 3;
+		} else {
+			return 4;
+		}
+	}
+
+	// TODO: ミッションの重複を避ける
 	getRandomMission() {
 		const missionKeys = Object.keys(missions);
 		const randomKey =
 			missionKeys[Math.floor(Math.random() * missionKeys.length)];
-		return { id: randomKey, description: missions[randomKey] };
+		return { id: randomKey, mission: missions[randomKey] };
 	}
 
 	async makeMove(
@@ -219,6 +220,20 @@ export class Magic extends DurableObject {
 		console.log("Making move:", player, x, y, num);
 
 		this.gameState.board[y][x] = this.computeCellResult(x, y, num, operation);
+
+		if (this.gameState.turn === this.gameState.players.length - 1) {
+			this.gameState.round += 1;
+		}
+		this.gameState.turn =
+			(this.gameState.turn + 1) % this.gameState.players.length;
+
+		const prevHand = this.gameState.hands[player];
+
+		this.gameState.hands[player] = prevHand.toSpliced(
+			prevHand.indexOf(num),
+			1,
+			this.drawCard(),
+		);
 
 		await this.ctx.storage.put("gameState", this.gameState);
 		this.broadcast({ type: "state", payload: this.gameState });

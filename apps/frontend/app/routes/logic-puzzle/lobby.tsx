@@ -1,13 +1,10 @@
-import type { InferResponseType } from "hono/client";
+import type { Room, User } from "@apps/backend";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { client } from "../../lib/client";
 
-type User = InferResponseType<typeof client.api.users.me.$get>;
-type Room = InferResponseType<typeof client.api.rooms.$get>[number];
-
 export default function Lobby() {
-	const [user, setUser] = useState<User | null>(null);
+	const [user, setUser] = useState<User | { error: string } | null>(null);
 	const [userName, setUserName] = useState("");
 	const [rooms, setRooms] = useState<Room[]>([]);
 	const [newRoomName, setNewRoomName] = useState("");
