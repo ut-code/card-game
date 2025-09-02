@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { type Mission, missions } from "./mission";
 
 export type MoveAction = {
 	x: number;
@@ -23,15 +24,9 @@ export type GameState = {
 	missions: {
 		[playerId: string]: {
 			id: string;
-			description: string;
+			description: Mission;
 		};
 	};
-};
-
-const missions: Record<string, string> = {
-	"0": "どこかの列の和が13",
-	"1": "どこかの行の和が11",
-	"2": "どこかの対角線の和が17",
 };
 
 interface Session {
