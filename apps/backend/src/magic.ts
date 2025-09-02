@@ -226,11 +226,11 @@ export class Magic extends DurableObject {
 
 		this.gameState.board[y][x] = this.computeCellResult(x, y, num, operation);
 
-		this.gameState.turn =
-			(this.gameState.turn + 1) % this.gameState.players.length;
-		if (this.gameState.turn === this.gameState.players.length) {
+		if (this.gameState.turn === this.gameState.players.length - 1) {
 			this.gameState.round += 1;
 		}
+		this.gameState.turn =
+			(this.gameState.turn + 1) % this.gameState.players.length;
 
 		const prevHand = this.gameState.hands[player];
 

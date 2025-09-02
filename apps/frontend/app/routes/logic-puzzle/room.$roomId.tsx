@@ -72,6 +72,33 @@ function Mission({ description }: { description: string }) {
 
 // --- Main Page Component ---
 
+function TurnDisplay({
+	round,
+	currentPlayerId,
+	myId,
+}: {
+	round: number;
+	currentPlayerId: string;
+	myId: string;
+}) {
+	const isMyTurn = currentPlayerId === myId;
+
+	return (
+		<div className="text-center p-2 rounded-lg bg-base-200 shadow mb-4">
+			<p className="text-sm font-bold">Round {round + 1}</p>
+			<div
+				className={`mt-1 text-lg font-bold p-2 rounded-md transition-all ${
+					isMyTurn
+						? "bg-primary text-primary-content animate-pulse"
+						: "bg-base-100"
+				}`}
+			>
+				{isMyTurn ? "Your Turn" : "Opponent's Turn"}
+			</div>
+		</div>
+	);
+}
+
 export default function RoomPage() {
 	const { roomId } = useParams();
 	const navigate = useNavigate();
@@ -81,6 +108,7 @@ export default function RoomPage() {
 	const ws = useRef<WebSocket | null>(null);
 
 	const opponentId = gameState?.players.find((p) => p !== userId) ?? null;
+	const currentPlayerId = gameState?.players[gameState.turn];
 
 	const [selectedNum, setSelectedNum] = useState<number | null>(null);
 
@@ -154,7 +182,7 @@ export default function RoomPage() {
 
 	// --- Render Logic ---
 
-	if (!gameState || !userId) {
+	if (!gameState || !userId || !currentPlayerId) {
 		return (
 			<div className="p-8 text-center">
 				<h1>Loading...</h1>
@@ -186,6 +214,11 @@ export default function RoomPage() {
 
 			{/* Game Board */}
 			<div className="w-full max-w-md mx-auto">
+				<TurnDisplay
+					round={gameState.round}
+					currentPlayerId={currentPlayerId}
+					myId={userId}
+				/>
 				<GameBoard board={gameState.board} onCellClick={handleCellClick} />
 			</div>
 
