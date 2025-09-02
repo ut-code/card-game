@@ -2,10 +2,15 @@
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "backend",
 	"main": "src/index.ts",
-	"compatibility_date": "2025-08-06"
-	// "compatibility_flags": [
-	//   "nodejs_compat"
-	// ],
+	"compatibility_date": "2025-08-06",
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "MAGIC",
+				"class_name": "Magic"
+			}
+		]
+	}
 	// "vars": {
 	//   "MY_VAR": "my-variable"
 	// },

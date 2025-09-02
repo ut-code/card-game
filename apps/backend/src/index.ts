@@ -1,7 +1,11 @@
 import { Hono } from "hono";
-import { upgradeWebSocket } from "hono/cloudflare-workers";
 import { getSignedCookie, setSignedCookie } from "hono/cookie";
 import { cors } from "hono/cors";
+import { type GameState, Magic, type MoveAction } from "./magic";
+
+type Bindings = {
+	MAGIC: DurableObjectNamespace;
+};
 
 // Note: In a real application, you would use a proper database or KV store.
 const rooms: Record<string, { id: string; name: string; players: string[] }> =
@@ -11,7 +15,7 @@ const users: Record<string, { id: string; name: string }> = {};
 // TODO: 環境変数にする
 const secret = "hoge";
 
-const app = new Hono()
+const app = new Hono<{ Bindings: Bindings }>()
 	.use(
 		"*",
 		cors({
@@ -20,7 +24,8 @@ const app = new Hono()
 		}),
 	)
 	.basePath("/api")
-	// User routes
+
+	// User routes (remains the same)
 	.get("/users/me", async (c) => {
 		const userId = await getSignedCookie(c, secret, "userId");
 
@@ -28,8 +33,7 @@ const app = new Hono()
 			console.error("User ID cookie is missing or invalid");
 			return c.json({ error: "User ID is missing" }, 400);
 		}
-
-		const user = users[userId]; // Mock: get first user
+		const user = users[userId];
 		if (!user) {
 			console.error(`User not found for ID: ${userId}`);
 			return c.json({ error: "User not found" }, 404);
@@ -53,7 +57,7 @@ const app = new Hono()
 		return c.json(users[userId], 201);
 	})
 
-	// Room routes
+	// Room routes (remains the same)
 	.get("/rooms", (c) => {
 		return c.json(Object.values(rooms));
 	})
@@ -72,12 +76,10 @@ const app = new Hono()
 		if (!room) {
 			return c.json({ error: "Room not found" }, 404);
 		}
-		// TODO: Return actual game state
-		return c.json<{ id: string; name: string; players: string[] }>(room);
+		return c.json(room);
 	})
 	.post("/rooms/:roomId/join", async (c) => {
 		const { roomId } = c.req.param();
-		// TODO: Get userId from session
 		const userId = await getSignedCookie(c, secret, "userId");
 		if (!userId) {
 			return c.json({ error: "User not authenticated" }, 401);
@@ -104,38 +106,27 @@ const app = new Hono()
 		room.players = room.players.filter((p) => p !== userId);
 		return c.json({ message: "Left room successfully" });
 	})
-	.get(
-		"/rooms/:roomId/ws",
-		upgradeWebSocket((c) => {
-			const { roomId } = c.req.param();
-			console.log(`WebSocket connection opened for room: ${roomId}`);
-			return {
-				onMessage: (evt, ws) => {
-					console.log(`Message from client in room ${roomId}: ${evt.data}`);
-					// TODO: Broadcast message to other clients in the same room
-					ws.send(JSON.stringify({ type: "pong", roomId }));
-				},
-				onClose: () => {
-					console.log(`Connection closed for room: ${roomId}`);
-				},
-			};
-		}),
-	)
-	.get(
-		"/ws",
-		upgradeWebSocket(() => {
-			console.log("WebSocket connection opened");
-			return {
-				onMessage: (evt, ws) => {
-					console.log(`Message from client: ${evt.data}`);
-					ws.send(JSON.stringify({ type: "pong" }));
-				},
-				onClose: () => {
-					console.log("Connection closed");
-				},
-			};
-		}),
-	);
+
+	// --- New Game WebSocket Route ---
+	.get("/games/:id/ws", async (c) => {
+		const gameId = c.req.param("id");
+		const userId = await getSignedCookie(c, secret, "userId");
+		if (!userId) {
+			return c.json({ error: "User not authenticated" }, 401);
+		}
+
+		const id = c.env.MAGIC.idFromName(gameId);
+		const stub = c.env.MAGIC.get(id);
+
+		const url = new URL(c.req.url);
+		url.searchParams.set("playerId", userId);
+
+		const request = new Request(url.toString(), c.req.raw);
+		return stub.fetch(request);
+	});
 
 export type AppType = typeof app;
 export default app;
+
+export type { GameState, MoveAction };
+export { Magic };
