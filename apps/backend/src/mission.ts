@@ -1,4 +1,11 @@
-const missions: Record<string, object> = {
+export type Mission = {
+	type: "sum" | "multipile" | "arithmetic" | "geometic" | "prime";
+	target: "column" | "row" | "diagonal" | "allDirection" | "allCell";
+	number: number;
+	discription: string;
+};
+
+export const missions: Record<string, Mission> = {
 	"0": {
 		type: "sum",
 		target: "column",
@@ -304,7 +311,3 @@ const missions: Record<string, object> = {
 // type: 何を作るか　target: どこで作るか　discription: 説明文
 // sum: 合計　multipile: 倍数　arthmetic: 等差数列　geometic: 等比数列　prime: 素数
 // column: 縦・列　row: 横・行　diagonal: 対角線　allDirection: 縦・横・対角線すべて　allCell: 盤面上に4つ
-
-export default function data() {
-	return missions;
-}

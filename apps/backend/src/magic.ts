@@ -1,6 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-
-import missions from "./mission";
+import { type Mission, missions } from "./mission";
 
 export type MoveAction = {
 	x: number;
@@ -25,7 +24,7 @@ export type GameState = {
 	missions: {
 		[playerId: string]: {
 			id: string;
-			description: string;
+			description: Mission;
 		};
 	};
 };
