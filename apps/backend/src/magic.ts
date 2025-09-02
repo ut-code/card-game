@@ -3,15 +3,17 @@ import { DurableObject } from "cloudflare:workers";
 export type MoveAction = {
 	x: number;
 	y: number;
-	type: "plus" | "sub";
+	operation: Operation;
 	num: number;
 };
+
+export type Operation = "plus" | "sub";
 
 export type GameState = {
 	players: string[];
 	round: number;
 	turn: number;
-	board: (string | null)[][];
+	board: (number | null)[][];
 	boardSize: number;
 	winner: string | null;
 	gameId: string;
@@ -79,6 +81,7 @@ export class Magic extends DurableObject {
 
 		ws.addEventListener("message", async (msg) => {
 			try {
+				// TODO: 型をつける
 				const { type, payload } = JSON.parse(msg.data as string);
 
 				switch (type) {
@@ -86,7 +89,13 @@ export class Magic extends DurableObject {
 						await this.initialize(payload?.boardSize);
 						break;
 					case "makeMove":
-						await this.makeMove(playerId, payload.x, payload.y);
+						await this.makeMove(
+							playerId,
+							payload.x,
+							payload.y,
+							payload.num,
+							payload.operation,
+						);
 						break;
 				}
 			} catch {
@@ -193,14 +202,78 @@ export class Magic extends DurableObject {
 		return { id: randomKey, description: missions[randomKey] };
 	}
 
-	async makeMove(player: string, x: number, y: number) {
+	async makeMove(
+		player: string,
+		x: number,
+		y: number,
+		num: number,
+		operation: Operation,
+	) {
 		if (!this.gameState || this.gameState.winner) return;
 
-		console.log("Making move:", player, x, y);
+		if (!this.isValidMove(player, x, y, num)) {
+			console.error("Invalid move attempted:", player, x, y, num);
+			return;
+		}
 
-		// NOTE:ロジックを実装
+		console.log("Making move:", player, x, y, num);
+
+		this.gameState.board[y][x] = this.computeCellResult(x, y, num, operation);
 
 		await this.ctx.storage.put("gameState", this.gameState);
 		this.broadcast({ type: "state", payload: this.gameState });
+	}
+
+	isValidMove(player: string, x: number, y: number, num: number) {
+		if (!this.gameState) throw new Error("Game state is not initialized");
+
+		// TODO: 調整可能にする
+		if (!Number.isInteger(num) || num < 1 || num > 4) {
+			console.error("Invalid number:", num);
+			return false;
+		}
+
+		const currentPlayer = this.gameState.players[this.gameState.turn];
+		if (currentPlayer !== player) {
+			console.error("Not your turn:", player);
+			return false;
+		}
+
+		const currentHand = this.gameState.hands[currentPlayer];
+		if (!currentHand || currentHand.length === 0) {
+			console.error("Invalid hand:", currentPlayer);
+			return false;
+		}
+		if (!currentHand.includes(num)) {
+			console.error("Card not in hand:", num);
+			return false;
+		}
+
+		if (this.gameState.board[y][x] === undefined) {
+			console.error("Invalid board position:", x, y);
+			return false;
+		}
+
+		return true;
+	}
+
+	computeCellResult(
+		x: number,
+		y: number,
+		num: number,
+		operation: Operation,
+	): number {
+		if (!this.gameState) throw new Error("Game state is not initialized");
+
+		const prev = this.gameState.board[y][x] ?? 0;
+
+		switch (operation) {
+			case "plus":
+				return prev + num;
+			case "sub":
+				return prev - num;
+			default:
+				return operation satisfies never;
+		}
 	}
 }

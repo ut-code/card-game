@@ -1,8 +1,8 @@
 /** biome-ignore-all lint/a11y/noStaticElementInteractions: TODO */
 /** biome-ignore-all lint/suspicious/noArrayIndexKey: TODO */
 /** biome-ignore-all lint/a11y/useKeyWithClickEvents: TODO */
-import type { GameState } from "@apps/backend";
-import { useEffect, useMemo, useRef, useState } from "react";
+import type { GameState, MoveAction } from "@apps/backend";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { client } from "../../lib/client";
 
@@ -12,7 +12,7 @@ function GameBoard({
 	board,
 	onCellClick,
 }: {
-	board: (string | null)[][];
+	board: (number | null)[][];
 	onCellClick: (x: number, y: number) => void;
 }) {
 	return (
@@ -80,9 +80,7 @@ export default function RoomPage() {
 	const [gameState, setGameState] = useState<GameState | null>(null);
 	const ws = useRef<WebSocket | null>(null);
 
-	const opponentId = useMemo(() => {
-		return gameState?.players.find((p) => p !== userId) ?? null;
-	}, [gameState, userId]);
+	const opponentId = gameState?.players.find((p) => p !== userId) ?? null;
 
 	const [selectedNum, setSelectedNum] = useState<number | null>(null);
 
@@ -134,7 +132,7 @@ export default function RoomPage() {
 		return () => socket.close();
 	}, [roomId, userId]);
 
-	const sendWsMessage = (type: string, payload?: object) => {
+	const sendWsMessage = (type: string, payload?: MoveAction) => {
 		if (ws.current?.readyState === WebSocket.OPEN) {
 			const message = JSON.stringify({ type, payload });
 			console.log("[WS] Sending message:", message);
@@ -144,7 +142,8 @@ export default function RoomPage() {
 
 	const handleCellClick = (x: number, y: number) => {
 		if (!selectedNum) return;
-		sendWsMessage("makeMove", { x, y, selectedNum });
+		// TODO: 正しいoperationとnumをいれる
+		sendWsMessage("makeMove", { x, y, operation: "plus", num: selectedNum });
 		setSelectedNum(null);
 	};
 
