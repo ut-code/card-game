@@ -32,7 +32,15 @@ function GameBoard({
 	);
 }
 
-function Hand({ cards, title }: { cards: number[]; title: string }) {
+function Hand({
+	cards,
+	title,
+	onCardClick,
+}: {
+	cards: number[];
+	title: string;
+	onCardClick: (i: number) => void;
+}) {
 	return (
 		<div>
 			<h3 className="text-lg font-bold mb-2">{title}</h3>
@@ -40,7 +48,8 @@ function Hand({ cards, title }: { cards: number[]; title: string }) {
 				{cards.map((card, i) => (
 					<div
 						key={i}
-						className="card w-16 h-24 bg-primary text-primary-content shadow-lg flex items-center justify-center"
+						className="card w-16 h-24 bg-primary text-primary-content shadow-lg flex items-center justify-center cursor-pointer hover:bg-secondary transition-colors duration-150"
+						onClick={() => onCardClick(i)}
 					>
 						<span className="text-4xl font-bold">{card}</span>
 					</div>
@@ -74,6 +83,8 @@ export default function RoomPage() {
 	const opponentId = useMemo(() => {
 		return gameState?.players.find((p) => p !== userId) ?? null;
 	}, [gameState, userId]);
+
+	const [selectedNum, setSelectedNum] = useState<number | null>(null);
 
 	// Fetch user ID on component mount
 	useEffect(() => {
@@ -132,7 +143,14 @@ export default function RoomPage() {
 	};
 
 	const handleCellClick = (x: number, y: number) => {
-		sendWsMessage("makeMove", { x, y });
+		if (!selectedNum) return;
+		sendWsMessage("makeMove", { x, y, selectedNum });
+		setSelectedNum(null);
+	};
+
+	const handleCardClick = (i: number) => {
+		if (!gameState || !userId) return;
+		setSelectedNum(gameState.hands[userId][i]);
 	};
 
 	// --- Render Logic ---
@@ -178,7 +196,11 @@ export default function RoomPage() {
 					<Mission description={gameState.missions[userId].description} />
 				)}
 				{gameState.hands[userId] && (
-					<Hand cards={gameState.hands[userId]} title="Your Hand" />
+					<Hand
+						cards={gameState.hands[userId]}
+						title="Your Hand"
+						onCardClick={handleCardClick}
+					/>
 				)}
 			</div>
 		</div>
