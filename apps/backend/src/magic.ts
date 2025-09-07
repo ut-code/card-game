@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { sortAndDeduplicateDiagnostics } from "typescript";
 import { type Mission, missions } from "./mission";
 
 export type MoveAction = {
@@ -16,7 +17,7 @@ export type GameState = {
 	turn: number; // 0 ~ players.length-1 players[turn]'s turn
 	board: (number | null)[][];
 	boardSize: number;
-	winner: string | null;
+	winners: string[] | null;
 	gameId: string;
 	hands: {
 		[playerId: string]: number[];
@@ -24,7 +25,7 @@ export type GameState = {
 	missions: {
 		[playerId: string]: {
 			id: string;
-			description: Mission;
+			mission: Mission;
 		};
 	};
 };
@@ -132,7 +133,7 @@ export class Magic extends DurableObject {
 				.fill(null)
 				.map(() => Array(boardSize).fill(null)),
 			boardSize: boardSize,
-			winner: null,
+			winners: null,
 			gameId: this.ctx.id.toString(),
 			hands: {},
 			missions: {},
@@ -200,7 +201,7 @@ export class Magic extends DurableObject {
 		const missionKeys = Object.keys(missions);
 		const randomKey =
 			missionKeys[Math.floor(Math.random() * missionKeys.length)];
-		return { id: randomKey, description: missions[randomKey] };
+		return { id: randomKey, mission: missions[randomKey] };
 	}
 
 	async makeMove(
@@ -210,7 +211,7 @@ export class Magic extends DurableObject {
 		num: number,
 		operation: Operation,
 	) {
-		if (!this.gameState || this.gameState.winner) return;
+		if (!this.gameState || this.gameState.winners) return;
 
 		if (!this.isValidMove(player, x, y, num)) {
 			console.error("Invalid move attempted:", player, x, y, num);
@@ -237,6 +238,12 @@ export class Magic extends DurableObject {
 
 		await this.ctx.storage.put("gameState", this.gameState);
 		this.broadcast({ type: "state", payload: this.gameState });
+		for (let t = 0; t < this.gameState.players.length; t++) {
+			this.isVictory(
+				this.gameState.players[t],
+				this.gameState.missions[this.gameState.players[t]].mission,
+			);
+		}
 	}
 
 	isValidMove(player: string, x: number, y: number, num: number) {
@@ -289,6 +296,164 @@ export class Magic extends DurableObject {
 				return prev - num;
 			default:
 				return operation satisfies never;
+		}
+	}
+	isVictory(playerName: string, mission: Mission) {
+		if (!this.gameState) throw new Error("Game state is not initialized");
+		if (mission.target === "column" || mission.target === "allDirection") {
+			for (let i = 0; i < this.gameState.boardSize; i++) {
+				const columnary = this.gameState.board[i].filter(
+					(value) => value !== null,
+				);
+				if (columnary.length === this.gameState.boardSize) {
+					this.isWinner(columnary, playerName, mission);
+				}
+			}
+		}
+		if (mission.target === "row" || mission.target === "allDirection") {
+			for (let i = 0; i < this.gameState.boardSize; i++) {
+				const nullinary = [];
+				for (let j = 0; j < this.gameState.boardSize; j++) {
+					nullinary.push(this.gameState.board[j][i]);
+				}
+				const rowary = nullinary.filter((value) => value !== null);
+				if (rowary.length === this.gameState.boardSize) {
+					this.isWinner(rowary, playerName, mission);
+				}
+			}
+		}
+		if (mission.target === "diagonal" || mission.target === "allDirection") {
+			for (let i = 0; i < 2; i++) {
+				const nullinary = [];
+				for (let j = 0; j < this.gameState.boardSize; j++) {
+					if (i === 0) {
+						nullinary.push(
+							this.gameState.board[j][this.gameState.boardSize - j - 1],
+						);
+					} else {
+						nullinary.push(
+							this.gameState.board[this.gameState.boardSize - j - 1][j],
+						);
+					}
+				}
+				const diaary = nullinary.filter((value) => value !== null);
+				if (diaary.length === this.gameState.boardSize) {
+					this.isWinner(diaary, playerName, mission);
+				}
+			}
+		}
+		if (mission.target === "allCell") {
+			const nullinary = [];
+			for (let i = 0; i < this.gameState.boardSize; i++) {
+				for (let j = 0; j < this.gameState.boardSize; j++) {
+					nullinary.push(this.gameState.board[i][j]);
+				}
+			}
+			const boardary = nullinary.filter((value) => value !== null);
+			if (mission.type === "multipile") {
+				let hikaku = 0;
+				for (let j = 0; j < boardary.length; j++) {
+					if (boardary[j] % mission.number === 0) {
+						hikaku += 1;
+					}
+				}
+				if (hikaku > 3) {
+					this.addWinner(playerName);
+				}
+			}
+			if (mission.type === "prime") {
+				let hikaku = 0;
+				for (let j = 0; j < boardary.length; j++) {
+					if (this.prime(boardary[j] % mission.number)) {
+						hikaku += 1;
+					}
+				}
+				if (hikaku > 3) {
+					this.addWinner(playerName);
+				}
+			}
+		}
+	}
+
+	isWinner(obary: number[], playerName: string, mission: Mission) {
+		if (!this.gameState) throw new Error("Game state is not initialized");
+		if (obary.length === this.gameState.boardSize) {
+			if (mission.type === "sum") {
+				let hikaku = 0;
+				for (let j = 0; j < this.gameState.boardSize; j++) {
+					hikaku += obary[j];
+				}
+				if (hikaku === mission.number) {
+					this.addWinner(playerName);
+				}
+			}
+			if (mission.type === "multipile") {
+				let hikaku = 0;
+				for (let j = 0; j < this.gameState.boardSize; j++) {
+					hikaku += obary[j] % mission.number;
+				}
+				if (hikaku === 0) {
+					this.addWinner(playerName);
+				}
+			}
+			if (mission.type === "arithmetic") {
+				obary.sort((first, second) => first - second);
+				let hikaku = 0;
+				for (let j = 1; j < this.gameState.boardSize; j++) {
+					if (obary[j] - obary[j - 1] === mission.number) {
+						hikaku += 1;
+					}
+				}
+				if (hikaku === this.gameState.boardSize - 1) {
+					this.addWinner(playerName);
+				}
+			}
+			if (mission.type === "geometic") {
+				obary.sort((first, second) => first - second);
+				let hikaku = 0;
+				for (let j = 1; j < this.gameState.boardSize; j++) {
+					if (obary[j] === obary[j - 1] * mission.number) {
+						hikaku += 1;
+					}
+				}
+				if (hikaku === this.gameState.boardSize - 1) {
+					this.addWinner(playerName);
+				}
+			}
+			if (mission.type === "prime") {
+				let hikaku = 0;
+				for (let j = 0; j < this.gameState.boardSize; j++) {
+					if (this.prime(obary[j])) {
+						hikaku += 1;
+					}
+				}
+				if (hikaku === this.gameState.boardSize) {
+					this.addWinner(playerName);
+				}
+			}
+		}
+	}
+
+	prime(number: number) {
+		const primeNumber = [
+			2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67,
+			71, 73, 79, 83, 89, 97,
+		];
+		for (let z = 0; z < primeNumber.length; z++) {
+			if (number === primeNumber[z]) {
+				return true;
+			} else if (number < primeNumber[z]) {
+				return false;
+			}
+		}
+		return false;
+	}
+	addWinner(playerName: string) {
+		if (!this.gameState) throw new Error("Game state is not initialized");
+		if (!this.gameState.winners) {
+			this.gameState.winners = [playerName];
+		} else if (!this.gameState.winners.includes(playerName)) {
+			this.gameState.winners.push(playerName);
 		}
 	}
 }
