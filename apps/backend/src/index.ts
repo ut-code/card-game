@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Hono } from "hono";
 import { getSignedCookie, setSignedCookie } from "hono/cookie";
@@ -20,12 +21,6 @@ type Variables = {
 export type User = {
 	id: string;
 	name: string;
-};
-
-export type Room = {
-	id: string;
-	name: string;
-	players: string[];
 };
 
 // TODO: 環境変数にする
@@ -116,8 +111,10 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
 		const { name } = await c.req.json<{ name: string }>();
 		if (!name) {
-			return c.json({ error: "Room name is required" }, 400);
+			return c.json({ error: "Room name is requirecd" }, 400);
 		}
+
+		const secret = randomInt(100000, 999999).toString();
 
 		const room = await prisma.room.create({
 			data: {
@@ -126,7 +123,46 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 				users: [user.id],
 			},
 		});
+
+		await prisma.roomSecret.create({
+			data: {
+				roomId: room.id,
+				secret,
+			},
+		});
+
 		return c.json(room, 201);
+	})
+	.post("/rooms/join", authMiddleware, async (c) => {
+		const prisma = c.get("prisma");
+		const user = c.get("user");
+		const { secret } = await c.req.json<{ secret: string }>();
+		if (!secret) {
+			return c.json({ error: "Secret is required" }, 400);
+		}
+
+		const roomSecret = await prisma.roomSecret.findUnique({
+			where: { secret },
+		});
+		if (!roomSecret) {
+			return c.json({ error: "Invalid secret" }, 401);
+		}
+
+		const room = await prisma.room.findUnique({
+			where: { id: roomSecret.roomId },
+		});
+		if (!room) {
+			return c.json({ error: "Room not found" }, 404);
+		}
+
+		if (!room.users.includes(user.id)) {
+			await prisma.room.update({
+				where: { id: room.id },
+				data: { users: { push: user.id } },
+			});
+		}
+
+		return c.json(room, 200);
 	})
 	.get("/rooms/:roomId", async (c) => {
 		const prisma = c.get("prisma");
