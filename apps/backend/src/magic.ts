@@ -248,14 +248,15 @@ export class Magic extends DurableObject {
 			this.drawCard(),
 		);
 
-		await this.ctx.storage.put("gameState", this.gameState);
-		this.broadcast({ type: "state", payload: this.gameState });
 		for (let t = 0; t < this.gameState.players.length; t++) {
 			this.isVictory(
 				this.gameState.players[t],
 				this.gameState.missions[this.gameState.players[t]].mission,
 			);
 		}
+
+		await this.ctx.storage.put("gameState", this.gameState);
+		this.broadcast({ type: "state", payload: this.gameState });
 	}
 
 	isValidMove(player: string, x: number, y: number, num: number) {
