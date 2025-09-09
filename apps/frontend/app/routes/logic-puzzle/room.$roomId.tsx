@@ -89,14 +89,14 @@ function Operations({
 	);
 }
 
-function Mission({ description }: { description: string }) {
+function Mission({ name, description }: { name: string; description: string }) {
 	return (
-		<div className="card bg-secondary text-secondary-content shadow-md">
+		<span className="card bg-secondary text-secondary-content shadow-md">
 			<div className="card-body items-center text-center">
-				<h2 className="card-title">Your Mission</h2>
+				<h2 className="card-title">{name}'s Mission</h2>
 				<p>{description}</p>
 			</div>
-		</div>
+		</span>
 	);
 }
 
@@ -130,10 +130,11 @@ export default function RoomPage() {
 	const navigate = useNavigate();
 
 	const [userId, setUserId] = useState<string | null>(null);
+	const [userName, setUserName] = useState<string | null>(null);
 	const [gameState, setGameState] = useState<GameState | null>(null);
 	const ws = useRef<WebSocket | null>(null);
 
-	const opponentId = gameState?.players.find((p) => p !== userId) ?? null;
+	const opponentIds = gameState?.players.filter((p) => p !== userId) ?? null;
 	const currentPlayerId = gameState?.players[gameState.turn];
 
 	const [selectedNumIndex, setSelectedNumIndex] = useState<number | null>(null);
@@ -146,6 +147,7 @@ export default function RoomPage() {
 			if (res.ok) {
 				const user = await res.json();
 				setUserId(user.id);
+				setUserName(user.name);
 			} else {
 				navigate("/logic-puzzle/lobby");
 			}
@@ -155,12 +157,12 @@ export default function RoomPage() {
 
 	// WebSocket connection effect
 	useEffect(() => {
-		if (!roomId || !userId) return;
+		if (!roomId || !userId || !userName) return;
 
 		const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
 		// TODO: This should be configurable via environment variables
 		const host = "localhost:8787";
-		const wsUrl = `${proto}//${host}/api/games/${roomId}/ws?playerId=${userId}`;
+		const wsUrl = `${proto}//${host}/api/games/${roomId}/ws?playerId=${userId}&playerName=${userName}`;
 
 		const socket = new WebSocket(wsUrl);
 		ws.current = socket;
@@ -178,6 +180,7 @@ export default function RoomPage() {
 			const message = JSON.parse(event.data);
 			if (message.type === "state") {
 				setGameState(message.payload);
+				console.log(message.payload);
 			}
 			if (message.error) {
 				console.error("[WS] Server error:", message.error);
@@ -185,7 +188,7 @@ export default function RoomPage() {
 		};
 
 		return () => socket.close();
-	}, [roomId, userId]);
+	}, [roomId, userId, userName]);
 
 	const sendWsMessage = (type: string, payload?: MoveAction) => {
 		if (ws.current?.readyState === WebSocket.OPEN) {
@@ -234,17 +237,16 @@ export default function RoomPage() {
 	return (
 		<div className="p-4 md:p-8 flex flex-col gap-4">
 			{/* Opponent's Info */}
-			{opponentId && (
-				<>
-					<div className="flex justify-between items-center">
-						<p>Opponent: {opponentId}</p>
-						<p>Cards: {gameState.hands[opponentId]?.length ?? 0}</p>
-					</div>
-					<p className="card bg-secondary text-secondary-content shadow-md text-center">
-						Opponent Mission:{" "}
-						{gameState.missions[opponentId]?.mission.description}
-					</p>
-				</>
+			{opponentIds && (
+				<div className="flex justify-center gap-4 mb-4">
+					{opponentIds.map((opponentId) => (
+						<Mission
+							key={opponentId}
+							name={gameState?.names[opponentId]}
+							description={gameState?.missions[opponentId]?.mission.description}
+						/>
+					))}
+				</div>
 			)}
 			{/* Game Board */}
 			<div className="w-full max-w-md mx-auto">
@@ -259,7 +261,8 @@ export default function RoomPage() {
 			<div className="flex flex-col items-center gap-4 mt-4">
 				{gameState.missions[userId] && (
 					<Mission
-						description={gameState.missions[userId].mission.description}
+						name={gameState?.names[userId]}
+						description={gameState?.missions[userId]?.mission.description}
 					/>
 				)}
 				<div className="flex flex-row gap-4">
