@@ -1,7 +1,13 @@
-import type { Room, User } from "@apps/backend";
+import type { User } from "@apps/backend";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { client } from "../../lib/client";
+
+type Room = {
+	id: string;
+	name: string;
+	users: string[];
+};
 
 export default function Lobby() {
 	const [user, setUser] = useState<User | { error: string } | null>(null);
@@ -134,7 +140,7 @@ export default function Lobby() {
 							<div key={room.id} className="card bg-base-100 shadow-md">
 								<div className="card-body">
 									<h3 className="text-xl">{room.name}</h3>
-									<p>{room.players.length} players</p>
+									<p>{room.users.length} players</p>
 									<div className="card-actions justify-end">
 										<button
 											className="btn btn-secondary"
