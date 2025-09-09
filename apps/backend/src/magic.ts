@@ -1,5 +1,4 @@
 import { DurableObject } from "cloudflare:workers";
-import { sortAndDeduplicateDiagnostics } from "typescript";
 import { type Mission, missions } from "./mission";
 
 export type MoveAction = {
@@ -109,8 +108,8 @@ export class Magic extends DurableObject {
 
 		const closeOrErrorHandler = () => {
 			this.sessions = this.sessions.filter((s) => s !== session);
-			// Optional: remove player from game state on disconnect
-			// this.removePlayer(playerId);
+			// remove player from game state on disconnect
+			this.removePlayer(playerId);
 		};
 		ws.addEventListener("close", closeOrErrorHandler);
 		ws.addEventListener("error", closeOrErrorHandler);
@@ -168,6 +167,17 @@ export class Magic extends DurableObject {
 		}
 		if (this.gameState && this.gameState.players.length === 2) {
 			this.startGame();
+		}
+	}
+
+	async removePlayer(playerId: string) {
+		if (this.gameState) {
+			this.gameState.players = this.gameState?.players.filter(
+				(player) => player !== playerId,
+			);
+			delete this.gameState.names[playerId];
+			delete this.gameState.hands[playerId];
+			delete this.gameState.missions[playerId];
 		}
 	}
 
