@@ -12,6 +12,9 @@ export type Operation = "add" | "sub";
 
 export type GameState = {
 	players: string[];
+	names: {
+		[playerId: string]: string;
+	};
 	round: number; // 0-indexed
 	turn: number; // 0 ~ players.length-1 players[turn]'s turn
 	board: (number | null)[][];
@@ -48,8 +51,11 @@ export class Magic extends DurableObject {
 	async fetch(request: Request) {
 		const url = new URL(request.url);
 		const playerId = url.searchParams.get("playerId");
+		const playerName = url.searchParams.get("playerName");
 		if (!playerId) {
 			return new Response("playerId is required", { status: 400 });
+		} else if (!playerName) {
+			return new Response("playerName is required", { status: 400 });
 		}
 
 		if (request.headers.get("Upgrade") !== "websocket") {
@@ -57,7 +63,7 @@ export class Magic extends DurableObject {
 		}
 
 		const { 0: client, 1: server } = new WebSocketPair();
-		await this.handleSession(server, playerId);
+		await this.handleSession(server, playerId, playerName);
 
 		return new Response(null, {
 			status: 101,
@@ -65,14 +71,14 @@ export class Magic extends DurableObject {
 		});
 	}
 
-	async handleSession(ws: WebSocket, playerId: string) {
+	async handleSession(ws: WebSocket, playerId: string, playerName: string) {
 		const session: Session = { ws, playerId };
 		this.sessions.push(session);
 
 		ws.accept();
 
 		// Add player to the game state if not already present
-		await this.addPlayer(playerId);
+		await this.addPlayer(playerId, playerName);
 
 		ws.addEventListener("message", async (msg) => {
 			try {
@@ -126,6 +132,7 @@ export class Magic extends DurableObject {
 	async initialize(boardSize = 3) {
 		this.gameState = {
 			players: [],
+			names: {},
 			round: 0,
 			turn: 0,
 			board: Array(boardSize)
@@ -141,7 +148,7 @@ export class Magic extends DurableObject {
 		this.broadcast({ type: "state", payload: this.gameState });
 	}
 
-	async addPlayer(playerId: string) {
+	async addPlayer(playerId: string, playerName: string) {
 		if (!this.gameState) {
 			await this.initialize();
 		}
@@ -151,6 +158,8 @@ export class Magic extends DurableObject {
 			!this.gameState.players.includes(playerId)
 		) {
 			this.gameState.players.push(playerId);
+			this.gameState.names[playerId] = playerName;
+
 			await this.ctx.storage.put("gameState", this.gameState);
 			this.broadcast({ type: "state", payload: this.gameState });
 		}

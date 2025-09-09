@@ -89,14 +89,14 @@ function Operations({
 	);
 }
 
-function Mission({ description }: { description: string }) {
+function Mission({ name, description }: { name: string; description: string }) {
 	return (
-		<div className="card bg-secondary text-secondary-content shadow-md">
+		<span className="card bg-secondary text-secondary-content shadow-md">
 			<div className="card-body items-center text-center">
-				<h2 className="card-title">Your Mission</h2>
+				<h2 className="card-title">{name}'s Mission</h2>
 				<p>{description}</p>
 			</div>
-		</div>
+		</span>
 	);
 }
 
@@ -133,7 +133,7 @@ export default function RoomPage() {
 	const [gameState, setGameState] = useState<GameState | null>(null);
 	const ws = useRef<WebSocket | null>(null);
 
-	const opponentId = gameState?.players.find((p) => p !== userId) ?? null;
+	const opponentIds = gameState?.players.filter((p) => p !== userId) ?? null;
 	const currentPlayerId = gameState?.players[gameState.turn];
 
 	const [selectedNumIndex, setSelectedNumIndex] = useState<number | null>(null);
@@ -211,6 +211,7 @@ export default function RoomPage() {
 	// --- Render Logic ---
 
 	if (!gameState || !userId || !currentPlayerId) {
+		console.log(gameState, userId, currentPlayerId);
 		return (
 			<div className="p-8 text-center">
 				<h1>Loading...</h1>
@@ -233,17 +234,16 @@ export default function RoomPage() {
 	return (
 		<div className="p-4 md:p-8 flex flex-col gap-4">
 			{/* Opponent's Info */}
-			{opponentId && (
-				<>
-					<div className="flex justify-between items-center">
-						<p>Opponent: {opponentId}</p>
-						<p>Cards: {gameState.hands[opponentId]?.length ?? 0}</p>
-					</div>
-					<p className="card bg-secondary text-secondary-content shadow-md text-center">
-						Opponent Mission:{" "}
-						{gameState.missions[opponentId]?.mission.description}
-					</p>
-				</>
+			{opponentIds && (
+				<div className="flex justify-center gap-4 mb-4">
+					{opponentIds.map((opponentId) => (
+						<Mission
+							key={opponentId}
+							name={gameState?.names[opponentId]}
+							description={gameState?.missions[opponentId].mission.description}
+						/>
+					))}
+				</div>
 			)}
 			{/* Game Board */}
 			<div className="w-full max-w-md mx-auto">
@@ -258,7 +258,8 @@ export default function RoomPage() {
 			<div className="flex flex-col items-center gap-4 mt-4">
 				{gameState.missions[userId] && (
 					<Mission
-						description={gameState.missions[userId].mission.description}
+						name={gameState?.names[userId]}
+						description={gameState?.missions[userId].mission.description}
 					/>
 				)}
 				<div className="flex flex-row gap-4">
