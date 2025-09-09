@@ -3,6 +3,7 @@ pre-commit:
   jobs:
     - name: biome lint
       run: "bun run check:lint"
+      stage_fixed: true
 
     - name: biome format
       run: "bun run fix:format"
