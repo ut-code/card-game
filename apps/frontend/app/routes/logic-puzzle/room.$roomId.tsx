@@ -130,6 +130,7 @@ export default function RoomPage() {
 	const navigate = useNavigate();
 
 	const [userId, setUserId] = useState<string | null>(null);
+	const [userName, setUserName] = useState<string | null>(null);
 	const [gameState, setGameState] = useState<GameState | null>(null);
 	const ws = useRef<WebSocket | null>(null);
 
@@ -146,6 +147,7 @@ export default function RoomPage() {
 			if (res.ok) {
 				const user = await res.json();
 				setUserId(user.id);
+				setUserName(user.name);
 			} else {
 				navigate("/logic-puzzle/lobby");
 			}
@@ -155,12 +157,12 @@ export default function RoomPage() {
 
 	// WebSocket connection effect
 	useEffect(() => {
-		if (!roomId || !userId) return;
+		if (!roomId || !userId || !userName) return;
 
 		const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
 		// TODO: This should be configurable via environment variables
 		const host = "localhost:8787";
-		const wsUrl = `${proto}//${host}/api/games/${roomId}/ws?playerId=${userId}`;
+		const wsUrl = `${proto}//${host}/api/games/${roomId}/ws?playerId=${userId}&playerName=${userName}`;
 
 		const socket = new WebSocket(wsUrl);
 		ws.current = socket;
@@ -178,6 +180,7 @@ export default function RoomPage() {
 			const message = JSON.parse(event.data);
 			if (message.type === "state") {
 				setGameState(message.payload);
+				console.log(message.payload);
 			}
 			if (message.error) {
 				console.error("[WS] Server error:", message.error);
@@ -185,7 +188,7 @@ export default function RoomPage() {
 		};
 
 		return () => socket.close();
-	}, [roomId, userId]);
+	}, [roomId, userId, userName]);
 
 	const sendWsMessage = (type: string, payload?: MoveAction) => {
 		if (ws.current?.readyState === WebSocket.OPEN) {
@@ -211,7 +214,6 @@ export default function RoomPage() {
 	// --- Render Logic ---
 
 	if (!gameState || !userId || !currentPlayerId) {
-		console.log(gameState, userId, currentPlayerId);
 		return (
 			<div className="p-8 text-center">
 				<h1>Loading...</h1>
@@ -240,7 +242,7 @@ export default function RoomPage() {
 						<Mission
 							key={opponentId}
 							name={gameState?.names[opponentId]}
-							description={gameState?.missions[opponentId].mission.description}
+							description={gameState?.missions[opponentId]?.mission.description}
 						/>
 					))}
 				</div>
@@ -259,7 +261,7 @@ export default function RoomPage() {
 				{gameState.missions[userId] && (
 					<Mission
 						name={gameState?.names[userId]}
-						description={gameState?.missions[userId].mission.description}
+						description={gameState?.missions[userId]?.mission.description}
 					/>
 				)}
 				<div className="flex flex-row gap-4">
