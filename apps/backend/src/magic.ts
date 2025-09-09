@@ -7,6 +7,7 @@ export type MoveAction = {
 	y: number;
 	operation: Operation;
 	num: number;
+	numIndex: number;
 };
 
 export type Operation = "add" | "sub";
@@ -91,6 +92,7 @@ export class Magic extends DurableObject {
 							payload.y,
 							payload.num,
 							payload.operation,
+							payload.numIndex,
 						);
 						break;
 				}
@@ -210,6 +212,7 @@ export class Magic extends DurableObject {
 		y: number,
 		num: number,
 		operation: Operation,
+		numIndex: number,
 	) {
 		if (!this.gameState || this.gameState.winners) return;
 
@@ -231,7 +234,7 @@ export class Magic extends DurableObject {
 		const prevHand = this.gameState.hands[player];
 
 		this.gameState.hands[player] = prevHand.toSpliced(
-			prevHand.indexOf(num),
+			numIndex,
 			1,
 			this.drawCard(),
 		);

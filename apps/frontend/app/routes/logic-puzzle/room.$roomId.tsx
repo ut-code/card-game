@@ -203,6 +203,7 @@ export default function RoomPage() {
 			y,
 			operation: selectedOperation,
 			num: gameState.hands[userId][selectedNumIndex],
+			numIndex: selectedNumIndex,
 		});
 		setSelectedNumIndex(null);
 		setSelectedOperation("add");
