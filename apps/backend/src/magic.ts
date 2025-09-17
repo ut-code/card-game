@@ -1,5 +1,4 @@
 import { DurableObject } from "cloudflare:workers";
-import { sortAndDeduplicateDiagnostics } from "typescript";
 import { type Mission, missions } from "./mission";
 
 export type MoveAction = {
