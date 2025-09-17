@@ -372,7 +372,7 @@ export class Magic extends DurableObject {
 						if (i === 0) {
 							matrix[j][this.gameState.boardSize - j - 1] = true;
 						} else {
-							matrix[this.gameState.boardSize - j - 1][j] = true;
+							matrix[j][j] = true;
 						}
 					}
 				}
