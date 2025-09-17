@@ -363,9 +363,7 @@ export class Magic extends DurableObject {
 							this.gameState.board[j][this.gameState.boardSize - j - 1],
 						);
 					} else {
-						nullinary.push(
-							this.gameState.board[this.gameState.boardSize - j - 1][j],
-						);
+						nullinary.push(this.gameState.board[j][j]);
 					}
 				}
 				const diaary = nullinary.filter((value) => value !== null);
@@ -398,8 +396,9 @@ export class Magic extends DurableObject {
 				}
 				if (hikaku > 3) {
 					for (let i = 0; i < nullinary.length; i++) {
-						matrix[Math.floor(i / mission.number)][i % mission.number] =
-							this.multi(nullinary[i], mission.number);
+						matrix[Math.floor(i / this.gameState.boardSize)][
+							i % this.gameState.boardSize
+						] = this.multi(nullinary[i], mission.number);
 					}
 				}
 			}
@@ -412,8 +411,9 @@ export class Magic extends DurableObject {
 				}
 				if (hikaku > 3) {
 					for (let i = 0; i < nullinary.length; i++) {
-						matrix[Math.floor(i / mission.number)][i % mission.number] =
-							this.prime(nullinary[i]);
+						matrix[Math.floor(i / this.gameState.boardSize)][
+							i % this.gameState.boardSize
+						] = this.prime(nullinary[i]);
 					}
 				}
 			}
