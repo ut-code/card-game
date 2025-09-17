@@ -31,6 +31,7 @@ export type GameState = {
 			mission: Mission;
 		};
 	};
+	status: "loading" | "ok" | "one player";
 };
 
 interface Session {
@@ -87,9 +88,6 @@ export class Magic extends DurableObject {
 				const { type, payload } = JSON.parse(msg.data as string);
 
 				switch (type) {
-					case "initialize":
-						await this.initialize(payload?.boardSize);
-						break;
 					case "makeMove":
 						await this.makeMove(
 							playerId,
@@ -145,6 +143,7 @@ export class Magic extends DurableObject {
 			gameId: this.ctx.id.toString(),
 			hands: {},
 			missions: {},
+			status: "loading",
 		};
 		await this.ctx.storage.put("gameState", this.gameState);
 		this.broadcast({ type: "state", payload: this.gameState });
@@ -171,27 +170,37 @@ export class Magic extends DurableObject {
 	}
 
 	async removePlayer(playerId: string) {
-		if (this.gameState) {
-			this.gameState.players = this.gameState?.players.filter(
-				(player) => player !== playerId,
-			);
-			delete this.gameState.names[playerId];
-			delete this.gameState.hands[playerId];
-			delete this.gameState.missions[playerId];
+		if (!this.gameState) throw new Error("Game state is not initialized");
+		this.gameState.players = this.gameState.players.filter(
+			(player) => player !== playerId,
+		);
+		delete this.gameState.names[playerId];
+		delete this.gameState.hands[playerId];
+		delete this.gameState.missions[playerId];
+		if (this.gameState.players.length === 1) {
+			this.gameState.status = "one player";
 		}
 	}
 
 	async startGame() {
-		if (!this.gameState) return;
-
+		if (
+			!this.gameState ||
+			this.gameState.status === "ok" ||
+			this.gameState.status === "one player"
+		)
+			return;
+		console.log(this.gameState.status);
 		// Initialize player hands and missions
 		for (const playerId of this.gameState.players) {
-			this.gameState.hands[playerId] = this.drawInitialHand();
-			this.gameState.missions[playerId] = this.getRandomMission();
+			if (!this.gameState.hands[playerId])
+				this.gameState.hands[playerId] = this.drawInitialHand();
+			if (!this.gameState.missions[playerId])
+				this.gameState.missions[playerId] = this.getRandomMission();
 		}
 
 		await this.ctx.storage.put("gameState", this.gameState);
 		this.broadcast({ type: "state", payload: this.gameState });
+		this.gameState.status = "ok";
 	}
 
 	drawInitialHand() {
@@ -258,14 +267,15 @@ export class Magic extends DurableObject {
 			this.drawCard(),
 		);
 
-		await this.ctx.storage.put("gameState", this.gameState);
-		this.broadcast({ type: "state", payload: this.gameState });
 		for (let t = 0; t < this.gameState.players.length; t++) {
 			this.isVictory(
 				this.gameState.players[t],
 				this.gameState.missions[this.gameState.players[t]].mission,
 			);
 		}
+
+		await this.ctx.storage.put("gameState", this.gameState);
+		this.broadcast({ type: "state", payload: this.gameState });
 	}
 
 	isValidMove(player: string, x: number, y: number, num: number) {

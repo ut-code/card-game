@@ -280,6 +280,10 @@ export default function RoomPage() {
 					/>
 				</div>
 			</div>
+			{/* "you are the only player left" popup */}
+			{gameState.status === "one player" && (
+				<div>You are the only player left.</div>
+			)}
 		</div>
 	);
 }
