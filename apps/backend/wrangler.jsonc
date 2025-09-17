@@ -3,6 +3,7 @@
 	"name": "backend",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-08-06",
+	"compatibility_flags": ["nodejs_compat"],
 	"durable_objects": {
 		"bindings": [
 			{
@@ -11,14 +12,10 @@
 			}
 		]
 	},
-	"kv_namespaces": [
+	"migrations": [
 		{
-			"binding": "MAGIC_USERS",
-			"id": "magic_users"
-		},
-		{
-			"binding": "MAGIC_ROOMS",
-			"id": "magic_rooms"
+			"tag": "v1",
+			"new_classes": ["Magic"]
 		}
 	]
 	// "vars": {

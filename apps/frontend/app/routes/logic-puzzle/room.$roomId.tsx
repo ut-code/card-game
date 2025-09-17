@@ -33,6 +33,38 @@ function GameBoard({
 	);
 }
 
+function FinalGameBoard({
+	board,
+	winnerary,
+}: {
+	board: (number | null)[][];
+	winnerary: (true | false)[][];
+}) {
+	return (
+		<div className="aspect-square bg-base-300 grid grid-cols-3 gap-2 p-2 rounded-lg shadow-inner">
+			{board.map((row, y) =>
+				row.map((cell, x) =>
+					winnerary[y][x] === true ? (
+						<div
+							key={`${x}-${y}`}
+							className="aspect-square bg-yellow-500 rounded flex items-center justify-center text-6xl font-bold cursor-pointer transition-colors duration-150"
+						>
+							{cell}
+						</div>
+					) : (
+						<div
+							key={`${x}-${y}`}
+							className="aspect-square bg-base-100 rounded flex items-center justify-center text-6xl font-bold cursor-pointer transition-colors duration-150"
+						>
+							{cell}
+						</div>
+					),
+				),
+			)}
+		</div>
+	);
+}
+
 function Hand({
 	cards,
 	title,
@@ -140,6 +172,8 @@ export default function RoomPage() {
 	const [selectedNumIndex, setSelectedNumIndex] = useState<number | null>(null);
 	const [selectedOperation, setSelectedOperation] = useState<Operation>("add");
 
+	const [winnerDisplay, setWinnerDisplay] = useState(0);
+
 	// Fetch user ID on component mount
 	useEffect(() => {
 		const fetchUser = async () => {
@@ -212,6 +246,14 @@ export default function RoomPage() {
 		setSelectedOperation("add");
 	};
 
+	const handleWinnersPlusClick = () => {
+		setWinnerDisplay(winnerDisplay + 1);
+	};
+
+	const handleWinnersMinusClick = () => {
+		setWinnerDisplay(winnerDisplay - 1);
+	};
+
 	// --- Render Logic ---
 
 	if (!gameState || !userId || !currentPlayerId) {
@@ -229,6 +271,129 @@ export default function RoomPage() {
 				<p className="mt-4">Room ID: {roomId}</p>
 				<div className="mt-8">
 					<span className="loading loading-lg loading-spinner"></span>
+				</div>
+			</div>
+		);
+	}
+
+	if (gameState.winners !== null) {
+		if (winnerDisplay === 0) {
+			return (
+				<div>
+					<div className="flex justify-center gap-4 mb-12 text-red-500">
+						<h1 className="text-3xl font-bold">GAME SET</h1>
+					</div>
+					{gameState.winners && (
+						<div className="flex justify-center gap-4 mb-12">
+							{gameState.winners.map((winnersId) => (
+								<h1 key={winnersId} className="text-3xl font-bold">
+									{gameState.names[winnersId]}
+								</h1>
+							))}
+							<h1 className="text-3xl font-bold">WIN!!</h1>
+						</div>
+					)}
+					<div className="w-full max-w-md mx-auto">
+						<FinalGameBoard
+							board={gameState.board}
+							winnerary={Array.from({ length: gameState.boardSize }, () =>
+								Array(gameState?.boardSize).fill(false),
+							)}
+						/>
+					</div>
+					<div className="card-actions justify-center mt-4">
+						<button
+							className="btn btn-primary"
+							type="button"
+							onClick={handleWinnersPlusClick}
+						>
+							Next
+						</button>
+					</div>
+				</div>
+			);
+		}
+		if (winnerDisplay === gameState.winners.length) {
+			return (
+				<div>
+					<div className="flex justify-center gap-4 mb-4">
+						<h1 className="text-3xl font-bold">
+							Result {winnerDisplay}/{gameState.winners.length}
+						</h1>
+					</div>
+					<div className="flex justify-center gap-4 mb-4">
+						<Mission
+							key={gameState.winners[winnerDisplay - 1]}
+							name={gameState?.names[gameState.winners[winnerDisplay - 1]]}
+							description={
+								gameState.missions[gameState.winners[winnerDisplay - 1]].mission
+									.description
+							}
+						/>
+					</div>
+					<div className="w-full max-w-md mx-auto">
+						<FinalGameBoard
+							board={gameState.board}
+							winnerary={
+								gameState.winnersAry[gameState.winners[winnerDisplay - 1]]
+							}
+						/>
+					</div>
+					<div className="card-actions mt-4  justify-center">
+						<button
+							className="btn btn-primary"
+							type="button"
+							onClick={handleWinnersMinusClick}
+						>
+							Back
+						</button>
+						<a href="/logic-puzzle/lobby" className="btn btn-primary">
+							to Lobby
+						</a>
+					</div>
+				</div>
+			);
+		}
+		return (
+			<div>
+				<div className="flex justify-center gap-4 mb-4">
+					<h1 className="text-3xl font-bold">
+						Result {winnerDisplay}/{gameState.winners.length}
+					</h1>
+				</div>
+				<div className="flex justify-center gap-4 mb-4">
+					<Mission
+						key={gameState.winners[winnerDisplay - 1]}
+						name={gameState.names[gameState.winners[winnerDisplay - 1]]}
+						description={
+							gameState.missions[gameState.winners[winnerDisplay - 1]].mission
+								.description
+						}
+					/>
+				</div>
+				<div className="w-full max-w-md mx-auto">
+					<FinalGameBoard
+						board={gameState.board}
+						winnerary={
+							gameState.winnersAry[gameState.winners[winnerDisplay - 1]]
+						}
+					/>
+				</div>
+				<div className="card-actions justify-center mt-4">
+					<button
+						className="btn btn-primary"
+						type="button"
+						onClick={handleWinnersMinusClick}
+					>
+						Back
+					</button>
+					<button
+						className="btn btn-primary"
+						type="button"
+						onClick={handleWinnersPlusClick}
+					>
+						Next
+					</button>
 				</div>
 			</div>
 		);

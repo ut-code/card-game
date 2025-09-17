@@ -21,6 +21,9 @@ export type GameState = {
 	board: (number | null)[][];
 	boardSize: number;
 	winners: string[] | null;
+	winnersAry: {
+		[playerId: string]: (true | false)[][];
+	};
 	gameId: string;
 	hands: {
 		[playerId: string]: number[];
@@ -140,6 +143,7 @@ export class Magic extends DurableObject {
 				.map(() => Array(boardSize).fill(null)),
 			boardSize: boardSize,
 			winners: null,
+			winnersAry: {},
 			gameId: this.ctx.id.toString(),
 			hands: {},
 			missions: {},
@@ -267,11 +271,19 @@ export class Magic extends DurableObject {
 			this.drawCard(),
 		);
 
-		for (let t = 0; t < this.gameState.players.length; t++) {
-			this.isVictory(
-				this.gameState.players[t],
-				this.gameState.missions[this.gameState.players[t]].mission,
-			);
+		for (const id of this.gameState.players) {
+			const winary = this.isVictory(this.gameState.missions[id].mission);
+			if (winary.some((row) => row.includes(true))) {
+				if (!this.gameState) throw new Error("Game state is not initialized");
+				this.gameState.winnersAry[id] = winary;
+				if (!this.gameState.winners) {
+					this.gameState.winners = [id];
+				} else if (!this.gameState.winners.includes(id)) {
+					this.gameState.winners.push(id);
+				}
+				console.log("winary", winary);
+				console.log("this.gameState.winnersAry", this.gameState.winnersAry);
+			}
 		}
 
 		await this.ctx.storage.put("gameState", this.gameState);
@@ -330,18 +342,23 @@ export class Magic extends DurableObject {
 				return operation satisfies never;
 		}
 	}
-	isVictory(playerName: string, mission: Mission) {
+
+	isVictory(mission: Mission) {
 		if (!this.gameState) throw new Error("Game state is not initialized");
+		const matrix = Array.from({ length: this.gameState.boardSize }, () =>
+			Array(this.gameState?.boardSize).fill(false),
+		);
 		if (mission.target === "column" || mission.target === "allDirection") {
 			for (let i = 0; i < this.gameState.boardSize; i++) {
 				const columnary = this.gameState.board[i].filter(
 					(value) => value !== null,
 				);
-				if (columnary.length === this.gameState.boardSize) {
-					this.isWinner(columnary, playerName, mission);
+				if (this.isWinner(columnary, mission)) {
+					matrix[i] = Array(this.gameState.boardSize).fill(true);
 				}
 			}
 		}
+
 		if (mission.target === "row" || mission.target === "allDirection") {
 			for (let i = 0; i < this.gameState.boardSize; i++) {
 				const nullinary = [];
@@ -349,11 +366,14 @@ export class Magic extends DurableObject {
 					nullinary.push(this.gameState.board[j][i]);
 				}
 				const rowary = nullinary.filter((value) => value !== null);
-				if (rowary.length === this.gameState.boardSize) {
-					this.isWinner(rowary, playerName, mission);
+				if (this.isWinner(rowary, mission)) {
+					for (let j = 0; j < this.gameState.boardSize; j++) {
+						matrix[j][i] = true;
+					}
 				}
 			}
 		}
+
 		if (mission.target === "diagonal" || mission.target === "allDirection") {
 			for (let i = 0; i < 2; i++) {
 				const nullinary = [];
@@ -369,11 +389,18 @@ export class Magic extends DurableObject {
 					}
 				}
 				const diaary = nullinary.filter((value) => value !== null);
-				if (diaary.length === this.gameState.boardSize) {
-					this.isWinner(diaary, playerName, mission);
+				if (this.isWinner(diaary, mission)) {
+					for (let j = 0; j < this.gameState.boardSize; j++) {
+						if (i === 0) {
+							matrix[j][this.gameState.boardSize - j - 1] = true;
+						} else {
+							matrix[this.gameState.boardSize - j - 1][j] = true;
+						}
+					}
 				}
 			}
 		}
+
 		if (mission.target === "allCell") {
 			const nullinary = [];
 			for (let i = 0; i < this.gameState.boardSize; i++) {
@@ -390,24 +417,39 @@ export class Magic extends DurableObject {
 					}
 				}
 				if (hikaku > 3) {
-					this.addWinner(playerName);
+					for (let i = 0; i < nullinary.length; i++) {
+						matrix[Math.floor(i / mission.number)][i % mission.number] =
+							this.multi(nullinary[i], mission.number);
+					}
 				}
 			}
 			if (mission.type === "prime") {
 				let hikaku = 0;
 				for (let j = 0; j < boardary.length; j++) {
-					if (this.prime(boardary[j] % mission.number)) {
+					if (this.prime(boardary[j])) {
 						hikaku += 1;
 					}
 				}
 				if (hikaku > 3) {
-					this.addWinner(playerName);
+					for (let i = 0; i < nullinary.length; i++) {
+						matrix[Math.floor(i / mission.number)][i % mission.number] =
+							this.prime(nullinary[i]);
+					}
 				}
 			}
 		}
+		return matrix;
 	}
 
-	isWinner(obary: number[], playerName: string, mission: Mission) {
+	multi(devidedNumber: number | null, devideNumber: number) {
+		if (devidedNumber === null) {
+			return false;
+		} else {
+			return devidedNumber % devideNumber === 0;
+		}
+	}
+
+	isWinner(obary: number[], mission: Mission) {
 		if (!this.gameState) throw new Error("Game state is not initialized");
 		if (obary.length === this.gameState.boardSize) {
 			if (mission.type === "sum") {
@@ -416,7 +458,7 @@ export class Magic extends DurableObject {
 					hikaku += obary[j];
 				}
 				if (hikaku === mission.number) {
-					this.addWinner(playerName);
+					return true;
 				}
 			}
 			if (mission.type === "multipile") {
@@ -425,7 +467,7 @@ export class Magic extends DurableObject {
 					hikaku += obary[j] % mission.number;
 				}
 				if (hikaku === 0) {
-					this.addWinner(playerName);
+					return true;
 				}
 			}
 			if (mission.type === "arithmetic") {
@@ -437,7 +479,7 @@ export class Magic extends DurableObject {
 					}
 				}
 				if (hikaku === this.gameState.boardSize - 1) {
-					this.addWinner(playerName);
+					return true;
 				}
 			}
 			if (mission.type === "geometic") {
@@ -449,7 +491,7 @@ export class Magic extends DurableObject {
 					}
 				}
 				if (hikaku === this.gameState.boardSize - 1) {
-					this.addWinner(playerName);
+					return true;
 				}
 			}
 			if (mission.type === "prime") {
@@ -460,13 +502,17 @@ export class Magic extends DurableObject {
 					}
 				}
 				if (hikaku === this.gameState.boardSize) {
-					this.addWinner(playerName);
+					return true;
 				}
 			}
 		}
+		return false;
 	}
 
-	prime(number: number) {
+	prime(number: number | null) {
+		if (number === null) {
+			return false;
+		}
 		const primeNumber = [
 			2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67,
 			71, 73, 79, 83, 89, 97,
@@ -479,13 +525,5 @@ export class Magic extends DurableObject {
 			}
 		}
 		return false;
-	}
-	addWinner(playerName: string) {
-		if (!this.gameState) throw new Error("Game state is not initialized");
-		if (!this.gameState.winners) {
-			this.gameState.winners = [playerName];
-		} else if (!this.gameState.winners.includes(playerName)) {
-			this.gameState.winners.push(playerName);
-		}
 	}
 }

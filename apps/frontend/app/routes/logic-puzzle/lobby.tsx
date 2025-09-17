@@ -1,13 +1,21 @@
-import type { Room, User } from "@apps/backend";
+import type { User } from "@apps/backend";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { client } from "../../lib/client";
+
+type Room = {
+	id: string;
+	name: string;
+	users: string[];
+};
 
 export default function Lobby() {
 	const [user, setUser] = useState<User | { error: string } | null>(null);
 	const [userName, setUserName] = useState("");
 	const [rooms, setRooms] = useState<Room[]>([]);
 	const [newRoomName, setNewRoomName] = useState("");
+	const [roomSecret, setRoomSecret] = useState("");
+	const [joinError, setJoinError] = useState<string | null>(null);
 	const navigate = useNavigate();
 
 	useEffect(() => {
@@ -62,6 +70,22 @@ export default function Lobby() {
 		}
 	};
 
+	const handleJoinWithSecret = async () => {
+		if (!roomSecret) return;
+		setJoinError(null);
+		const res = await client.api.rooms.join.$post({
+			json: { secret: roomSecret },
+		});
+		const data = await res.json();
+		if (res.ok && "id" in data) {
+			navigate(`/logic-puzzle/room/${data.id}`);
+		} else if ("error" in data) {
+			setJoinError(data.error);
+		} else {
+			setJoinError("Failed to join room");
+		}
+	};
+
 	if (!user || !("name" in user)) {
 		return (
 			<div className="p-8 flex flex-col items-center">
@@ -103,25 +127,57 @@ export default function Lobby() {
 			<p className="mb-8">Welcome, {user.name}!</p>
 
 			<div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-				<div>
-					<h2 className="text-2xl font-bold mb-4">Create a Room</h2>
-					<div className="card bg-base-100 shadow-xl">
-						<div className="card-body">
-							<input
-								type="text"
-								placeholder="Room name"
-								className="input input-bordered w-full"
-								value={newRoomName}
-								onChange={(e) => setNewRoomName(e.target.value)}
-							/>
-							<div className="card-actions justify-end mt-4">
-								<button
-									className="btn btn-primary"
-									type="button"
-									onClick={handleCreateRoom}
-								>
-									Create Room
-								</button>
+				<div className="space-y-8">
+					<div>
+						<h2 className="text-2xl font-bold mb-4">Create a Room</h2>
+						<div className="card bg-base-100 shadow-xl">
+							<div className="card-body">
+								<input
+									type="text"
+									placeholder="Room name"
+									className="input input-bordered w-full"
+									value={newRoomName}
+									onChange={(e) => setNewRoomName(e.target.value)}
+								/>
+								<div className="card-actions justify-end mt-4">
+									<button
+										className="btn btn-primary"
+										type="button"
+										onClick={handleCreateRoom}
+									>
+										Create Room
+									</button>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div>
+						<h2 className="text-2xl font-bold mb-4">Join with Secret</h2>
+						<div className="card bg-base-100 shadow-xl">
+							<div className="card-body">
+								{joinError && (
+									<div className="alert alert-error shadow-lg mb-4">
+										<div>
+											<span>{joinError}</span>
+										</div>
+									</div>
+								)}
+								<input
+									type="text"
+									placeholder="Enter secret code"
+									className="input input-bordered w-full"
+									value={roomSecret}
+									onChange={(e) => setRoomSecret(e.target.value)}
+								/>
+								<div className="card-actions justify-end mt-4">
+									<button
+										className="btn btn-secondary"
+										type="button"
+										onClick={handleJoinWithSecret}
+									>
+										Join Room
+									</button>
+								</div>
 							</div>
 						</div>
 					</div>
@@ -134,7 +190,7 @@ export default function Lobby() {
 							<div key={room.id} className="card bg-base-100 shadow-md">
 								<div className="card-body">
 									<h3 className="text-xl">{room.name}</h3>
-									<p>{room.players.length} players</p>
+									<p>{room.users.length} players</p>
 									<div className="card-actions justify-end">
 										<button
 											className="btn btn-secondary"
