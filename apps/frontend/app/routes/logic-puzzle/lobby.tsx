@@ -1,6 +1,6 @@
 import type { User } from "@apps/backend";
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useOutletContext } from "react-router";
 import { client } from "../../lib/client";
 
 type Room = {
@@ -10,24 +10,14 @@ type Room = {
 };
 
 export default function Lobby() {
-	const [user, setUser] = useState<User | { error: string } | null>(null);
+	const me = useOutletContext<User>();
+	const [user, setUser] = useState<User | { error: string } | null>(me ?? null);
 	const [userName, setUserName] = useState("");
 	const [rooms, setRooms] = useState<Room[]>([]);
 	const [newRoomName, setNewRoomName] = useState("");
 	const [roomSecret, setRoomSecret] = useState("");
 	const [joinError, setJoinError] = useState<string | null>(null);
 	const navigate = useNavigate();
-
-	useEffect(() => {
-		const fetchUser = async () => {
-			const res = await client.api.users.me.$get();
-			const data = await res.json();
-			if (res.ok) {
-				setUser(data);
-			}
-		};
-		fetchUser();
-	}, []);
 
 	useEffect(() => {
 		const fetchRooms = async () => {

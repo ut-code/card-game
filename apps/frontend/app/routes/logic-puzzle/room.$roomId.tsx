@@ -1,11 +1,10 @@
 /** biome-ignore-all lint/a11y/noStaticElementInteractions: TODO */
 /** biome-ignore-all lint/suspicious/noArrayIndexKey: TODO */
 /** biome-ignore-all lint/a11y/useKeyWithClickEvents: TODO */
-import type { GameState, MoveAction } from "@apps/backend";
+import type { GameState, MoveAction, User } from "@apps/backend";
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { useOutletContext, useParams } from "react-router";
 import type { Operation } from "../../../../backend/src/magic";
-import { client } from "../../lib/client";
 
 // --- Game Components ---
 
@@ -158,15 +157,14 @@ function TurnDisplay({
 }
 
 export default function RoomPage() {
-	const { roomId } = useParams();
-	const navigate = useNavigate();
+	const user = useOutletContext<User>();
 
-	const [userId, setUserId] = useState<string | null>(null);
-	const [userName, setUserName] = useState<string | null>(null);
+	const { roomId } = useParams();
+
 	const [gameState, setGameState] = useState<GameState | null>(null);
 	const ws = useRef<WebSocket | null>(null);
 
-	const opponentIds = gameState?.players.filter((p) => p !== userId) ?? null;
+	const opponentIds = gameState?.players.filter((p) => p !== user.id) ?? null;
 	const currentPlayerId = gameState?.players[gameState.turn];
 
 	const [selectedNumIndex, setSelectedNumIndex] = useState<number | null>(null);
@@ -175,28 +173,28 @@ export default function RoomPage() {
 	const [winnerDisplay, setWinnerDisplay] = useState(0);
 
 	// Fetch user ID on component mount
-	useEffect(() => {
-		const fetchUser = async () => {
-			const res = await client.api.users.me.$get();
-			if (res.ok) {
-				const user = await res.json();
-				setUserId(user.id);
-				setUserName(user.name);
-			} else {
-				navigate("/logic-puzzle/lobby");
-			}
-		};
-		fetchUser();
-	}, [navigate]);
+	// useEffect(() => {
+	// 	const fetchUser = async () => {
+	// 		const res = await client.api.users.me.$get();
+	// 		if (res.ok) {
+	// 			const user = await res.json();
+	// 			setUserId(user.id);
+	// 			setUserName(user.name);
+	// 		} else {
+	// 			navigate("/logic-puzzle/lobby");
+	// 		}
+	// 	};
+	// 	fetchUser();
+	// }, [navigate]);
 
 	// WebSocket connection effect
 	useEffect(() => {
-		if (!roomId || !userId || !userName) return;
+		if (!roomId || !user.id || !user.name) return;
 
 		const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
 		// TODO: This should be configurable via environment variables
 		const host = "localhost:8787";
-		const wsUrl = `${proto}//${host}/api/games/${roomId}/ws?playerId=${userId}&playerName=${userName}`;
+		const wsUrl = `${proto}//${host}/api/games/${roomId}/ws?playerId=${user.id}&playerName=${user.name}`;
 
 		const socket = new WebSocket(wsUrl);
 		ws.current = socket;
@@ -222,7 +220,7 @@ export default function RoomPage() {
 		};
 
 		return () => socket.close();
-	}, [roomId, userId, userName]);
+	}, [roomId, user.id, user.name]);
 
 	const sendWsMessage = (type: string, payload?: MoveAction) => {
 		if (ws.current?.readyState === WebSocket.OPEN) {
@@ -233,13 +231,13 @@ export default function RoomPage() {
 	};
 
 	const handleCellClick = (x: number, y: number) => {
-		if (!gameState || !userId || selectedNumIndex === null) return;
+		if (!gameState || !user.id || selectedNumIndex === null) return;
 		// TODO: 正しいoperationとnumをいれる
 		sendWsMessage("makeMove", {
 			x,
 			y,
 			operation: selectedOperation,
-			num: gameState.hands[userId][selectedNumIndex],
+			num: gameState.hands[user.id][selectedNumIndex],
 			numIndex: selectedNumIndex,
 		});
 		setSelectedNumIndex(null);
@@ -256,7 +254,7 @@ export default function RoomPage() {
 
 	// --- Render Logic ---
 
-	if (!gameState || !userId || !currentPlayerId) {
+	if (!gameState || !user.id || !currentPlayerId) {
 		return (
 			<div className="p-8 text-center">
 				<h1>Loading...</h1>
@@ -418,22 +416,22 @@ export default function RoomPage() {
 				<TurnDisplay
 					round={gameState.round}
 					currentPlayerId={currentPlayerId}
-					myId={userId}
+					myId={user.id}
 				/>
 				<GameBoard board={gameState.board} onCellClick={handleCellClick} />
 			</div>
 			{/* Player\'s Info */}
 			<div className="flex flex-col items-center gap-4 mt-4">
-				{gameState.missions[userId] && (
+				{gameState.missions[user.id] && (
 					<Mission
-						name={gameState?.names[userId]}
-						description={gameState?.missions[userId]?.mission.description}
+						name={gameState?.names[user.id]}
+						description={gameState?.missions[user.id]?.mission.description}
 					/>
 				)}
 				<div className="flex flex-row gap-4">
-					{gameState.hands[userId] && (
+					{gameState.hands[user.id] && (
 						<Hand
-							cards={gameState.hands[userId]}
+							cards={gameState.hands[user.id]}
 							title="Your Hand"
 							onCardClick={setSelectedNumIndex}
 							selectedNumIndex={selectedNumIndex}

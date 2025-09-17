@@ -11,4 +11,13 @@ export default defineConfig({
 		reactRouter(),
 		tsconfigPaths(),
 	],
+	// server: {
+	// 	proxy: {
+	// 		// バックエンドAPIへのリクエストをプロキシする
+	// 		"/api": {
+	// 			target: "http://127.0.0.1:8787", // バックエンドサーバーのアドレス
+	// 			changeOrigin: true,
+	// 		},
+	// 	},
+	// },
 });
