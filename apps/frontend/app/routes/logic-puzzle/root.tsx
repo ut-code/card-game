@@ -7,33 +7,40 @@ import {
 import { client } from "~/lib/client";
 
 export async function loader({ request }: LoaderFunctionArgs) {
+	const url = new URL(request.url);
+
+	if (url.pathname === "/logic-puzzle/lobby") {
+		try {
+			const cookie = request.headers.get("cookie");
+			if (!cookie) return null;
+
+			const res = await client.api.users.me.$get({}, { headers: { cookie } });
+			if (!res.ok) return null;
+
+			return await res.json();
+		} catch {
+			return null;
+		}
+	}
+
 	try {
 		const cookie = request.headers.get("cookie");
 
 		if (!cookie) {
-			redirect("/logic-puzzle/lobby");
-			return null;
+			return redirect("/logic-puzzle/lobby");
 		}
 
-		const res = await client.api.users.me.$get(
-			{},
-			{
-				headers: { cookie },
-			},
-		);
+		const res = await client.api.users.me.$get({}, { headers: { cookie } });
 
 		if (!res.ok) {
-			console.error("Failed to fetch user:", res.status, await res.text());
-			redirect("/logic-puzzle/lobby");
-			return null;
+			return redirect("/logic-puzzle/lobby");
 		}
 
 		const user = await res.json();
 		return user;
 	} catch (error) {
 		console.error("Error in loader:", error);
-		redirect("/logic-puzzle/lobby");
-		return null;
+		return redirect("/logic-puzzle/lobby");
 	}
 }
 

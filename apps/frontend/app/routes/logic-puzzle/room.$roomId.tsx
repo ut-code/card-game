@@ -157,14 +157,16 @@ function TurnDisplay({
 }
 
 export default function RoomPage() {
-	const user = useOutletContext<User>();
+	const user = useOutletContext<User | null>();
 
 	const { roomId } = useParams();
 
 	const [gameState, setGameState] = useState<GameState | null>(null);
 	const ws = useRef<WebSocket | null>(null);
 
-	const opponentIds = gameState?.players.filter((p) => p !== user.id) ?? null;
+	const opponentIds = user
+		? (gameState?.players.filter((p) => p !== user.id) ?? null)
+		: null;
 	const currentPlayerId = gameState?.players[gameState.turn];
 
 	const [selectedNumIndex, setSelectedNumIndex] = useState<number | null>(null);
@@ -172,24 +174,9 @@ export default function RoomPage() {
 
 	const [winnerDisplay, setWinnerDisplay] = useState(0);
 
-	// Fetch user ID on component mount
-	// useEffect(() => {
-	// 	const fetchUser = async () => {
-	// 		const res = await client.api.users.me.$get();
-	// 		if (res.ok) {
-	// 			const user = await res.json();
-	// 			setUserId(user.id);
-	// 			setUserName(user.name);
-	// 		} else {
-	// 			navigate("/logic-puzzle/lobby");
-	// 		}
-	// 	};
-	// 	fetchUser();
-	// }, [navigate]);
-
 	// WebSocket connection effect
 	useEffect(() => {
-		if (!roomId || !user.id || !user.name) return;
+		if (!roomId || !user || !user.id || !user.name) return;
 
 		const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
 		// TODO: This should be configurable via environment variables
@@ -220,7 +207,7 @@ export default function RoomPage() {
 		};
 
 		return () => socket.close();
-	}, [roomId, user.id, user.name]);
+	}, [roomId, user]);
 
 	const sendWsMessage = (type: string, payload?: MoveAction) => {
 		if (ws.current?.readyState === WebSocket.OPEN) {
@@ -231,7 +218,7 @@ export default function RoomPage() {
 	};
 
 	const handleCellClick = (x: number, y: number) => {
-		if (!gameState || !user.id || selectedNumIndex === null) return;
+		if (!gameState || !user || !user.id || selectedNumIndex === null) return;
 		// TODO: 正しいoperationとnumをいれる
 		sendWsMessage("makeMove", {
 			x,
@@ -254,7 +241,7 @@ export default function RoomPage() {
 
 	// --- Render Logic ---
 
-	if (!gameState || !user.id || !currentPlayerId) {
+	if (!gameState || !user || !user.id || !currentPlayerId) {
 		return (
 			<div className="p-8 text-center">
 				<h1>Loading...</h1>

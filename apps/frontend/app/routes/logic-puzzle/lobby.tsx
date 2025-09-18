@@ -10,7 +10,7 @@ type Room = {
 };
 
 export default function Lobby() {
-	const me = useOutletContext<User>();
+	const me = useOutletContext<User | null>();
 	const [user, setUser] = useState<User | { error: string } | null>(me ?? null);
 	const [userName, setUserName] = useState("");
 	const [rooms, setRooms] = useState<Room[]>([]);
