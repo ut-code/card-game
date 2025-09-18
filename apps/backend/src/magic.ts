@@ -58,7 +58,8 @@ export type MessageType =
 	| { type: "makeMove"; payload: MoveAction }
 	| { type: "setReady"; payload?: undefined }
 	| { type: "changeRule"; payload: Rule }
-	| { type: "backToLobby"; payload?: undefined };
+	| { type: "backToLobby"; payload?: undefined }
+	| { type: "removePlayer"; payload?: undefined };
 
 interface Session {
 	ws: WebSocket;
@@ -134,6 +135,11 @@ export class Magic extends DurableObject {
 					case "backToLobby":
 						await this.backToLobby(playerId);
 						break;
+					case "removePlayer":
+						await this.removePlayer(playerId);
+						break;
+					default:
+						throw new Error(`Unhandled message type: ${type}`);
 				}
 			} catch {
 				ws.send(JSON.stringify({ error: "Invalid message" }));
@@ -441,6 +447,27 @@ export class Magic extends DurableObject {
 	async backToLobby(playerId: string) {
 		if (!this.gameState) return;
 		this.gameState.playerStatus[playerId] = "preparing";
+
+		await this.ctx.storage.put("gameState", this.gameState);
+		this.broadcast({ type: "state", payload: this.gameState });
+	}
+
+	async removePlayer(playerId: string) {
+		if (!this.gameState) return;
+
+		this.gameState.players = this.gameState.players.filter(
+			(p) => p !== playerId,
+		);
+
+		delete this.gameState.playerStatus[playerId];
+		delete this.gameState.names[playerId];
+		delete this.gameState.hands[playerId];
+		delete this.gameState.missions[playerId];
+
+		if (this.gameState.players.length === 0) {
+			await this.ctx.storage.delete("gameState");
+			return;
+		}
 
 		await this.ctx.storage.put("gameState", this.gameState);
 		this.broadcast({ type: "state", payload: this.gameState });

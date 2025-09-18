@@ -9,7 +9,7 @@ import type {
 	User,
 } from "@apps/backend";
 import { useEffect, useRef, useState } from "react";
-import { useOutletContext, useParams } from "react-router";
+import { useNavigate, useOutletContext, useParams } from "react-router";
 import { client } from "../../lib/client";
 import type { Route } from "./+types/room.$roomId";
 
@@ -200,6 +200,7 @@ export default function RoomPage({ loaderData }: Route.ComponentProps) {
 	const { secret: roomSecret, hostId: roomHost } = loaderData;
 	const user = useOutletContext<User | null>();
 	const { roomId } = useParams();
+	const navigate = useNavigate();
 
 	const [gameState, setGameState] = useState<GameState | null>(null);
 	const myStatus = user?.id
@@ -255,6 +256,14 @@ export default function RoomPage({ loaderData }: Route.ComponentProps) {
 		};
 	}, [roomId, user?.id, user?.name]);
 
+	// Redirect if user is no longer in the room
+	useEffect(() => {
+		if (gameState && user && !gameState.players.includes(user.id)) {
+			console.log("User not in game state players, navigating to lobby.");
+			navigate("/logic-puzzle/lobby");
+		}
+	}, [gameState, user, navigate]);
+
 	function sendWsMessage({ type, payload }: MessageType): void {
 		if (ws.current?.readyState === WebSocket.OPEN) {
 			const message = JSON.stringify({ type, payload });
@@ -300,6 +309,14 @@ export default function RoomPage({ loaderData }: Route.ComponentProps) {
 
 	const handleBackToLobby = () => {
 		sendWsMessage({ type: "backToLobby" });
+	};
+
+	const handleLeaveRoom = async () => {
+		sendWsMessage({ type: "removePlayer" });
+		if (roomId) {
+			await client.api.rooms[":roomId"].leave.$post({ param: { roomId } });
+		}
+		navigate("/logic-puzzle/lobby");
 	};
 
 	// --- Render Logic ---
@@ -394,6 +411,9 @@ export default function RoomPage({ loaderData }: Route.ComponentProps) {
 					className={`card w-32 h-20 cursor-pointer items-center justify-center transition-colors duration-150 ${myStatus === "ready" ? "bg-green-500 text-white font-bold" : "bg-base-300 text-grey-700 shadow-lg"}`}
 				>
 					{myStatus === "ready" ? "READY!!" : "ready?"}
+				</div>
+				<div onClick={handleLeaveRoom} className="btn btn-error">
+					Leave Room
 				</div>
 			</div>
 		);
@@ -601,6 +621,15 @@ export default function RoomPage({ loaderData }: Route.ComponentProps) {
 				<a href="/logic-puzzle/lobby" className="btn btn-primary mt-4">
 					Go to Lobby
 				</a>
+			</div>
+		);
+	}
+
+	if (myStatus === null && !(currentPlayerId in gameState.players)) {
+		console.log("leaved");
+		return (
+			<div className="flex items-center justify-center min-h-screen">
+				<div className="loading loading-spinner loading-lg" />
 			</div>
 		);
 	}
