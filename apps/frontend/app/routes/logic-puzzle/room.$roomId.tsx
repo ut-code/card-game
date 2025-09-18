@@ -298,6 +298,10 @@ export default function RoomPage({ loaderData }: Route.ComponentProps) {
 		});
 	};
 
+	const handleBackToLobby = () => {
+		sendWsMessage({ type: "backToLobby" });
+	};
+
 	// --- Render Logic ---
 
 	if (!user || !roomId) {
@@ -469,9 +473,13 @@ export default function RoomPage({ loaderData }: Route.ComponentProps) {
 						>
 							Back
 						</button>
-						<a href="/logic-puzzle/lobby" className="btn btn-primary">
+						<button
+							className="btn btn-primary"
+							onClick={handleBackToLobby}
+							type="button"
+						>
 							to Lobby
-						</a>
+						</button>
 					</div>
 				</div>
 			);

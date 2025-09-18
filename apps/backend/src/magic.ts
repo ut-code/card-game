@@ -57,7 +57,8 @@ export type GameState = {
 export type MessageType =
 	| { type: "makeMove"; payload: MoveAction }
 	| { type: "setReady"; payload?: undefined }
-	| { type: "changeRule"; payload: Rule };
+	| { type: "changeRule"; payload: Rule }
+	| { type: "backToLobby"; payload?: undefined };
 
 interface Session {
 	ws: WebSocket;
@@ -130,6 +131,9 @@ export class Magic extends DurableObject {
 					case "changeRule":
 						await this.changeRule(payload);
 						break;
+					case "backToLobby":
+						await this.backToLobby(playerId);
+						break;
 				}
 			} catch {
 				ws.send(JSON.stringify({ error: "Invalid message" }));
@@ -167,9 +171,7 @@ export class Magic extends DurableObject {
 			names: {},
 			round: 0,
 			turn: 0,
-			board: Array(DEFAULT_BOARD_SIZE)
-				.fill(null)
-				.map(() => Array(DEFAULT_BOARD_SIZE).fill(null)),
+			board: [],
 			winners: null,
 			winnersAry: {},
 			gameId: this.ctx.id.toString(),
@@ -288,6 +290,7 @@ export class Magic extends DurableObject {
 
 	async startGame() {
 		if (!this.gameState || this.gameState.status !== "preparing") return;
+		this.clearGameState();
 		for (const playerId of this.gameState.players) {
 			if (this.gameState.playerStatus[playerId] !== "ready") {
 				console.error("one of the players not ready:", playerId);
@@ -432,6 +435,37 @@ export class Magic extends DurableObject {
 		}
 		console.log(this.gameState.rules);
 		await this.ctx.storage.put("gameState", this.gameState);
+		this.broadcast({ type: "state", payload: this.gameState });
+	}
+
+	async backToLobby(playerId: string) {
+		if (!this.gameState) return;
+		this.gameState.playerStatus[playerId] = "preparing";
+
+		await this.ctx.storage.put("gameState", this.gameState);
+		this.broadcast({ type: "state", payload: this.gameState });
+	}
+
+	async clearGameState() {
+		if (!this.gameState) return;
+
+		const size = this.gameState.rules.boardSize;
+
+		this.gameState = {
+			...structuredClone(this.gameState),
+			board: Array(size)
+				.fill(null)
+				.map(() => Array(size).fill(null)),
+			round: 0,
+			turn: 0,
+			winners: null,
+			winnersAry: {},
+			hands: {},
+			missions: {},
+		};
+
+		console.log(this.gameState);
+		await this.ctx.storage.delete("gameState");
 		this.broadcast({ type: "state", payload: this.gameState });
 	}
 
