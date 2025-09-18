@@ -13,6 +13,9 @@ export type Operation = "add" | "sub";
 
 export type GameState = {
 	players: string[];
+	playerStatus: {
+		[playerId: string]: "preparing" | "ready" | "playing";
+	};
 	names: {
 		[playerId: string]: string;
 	};
@@ -101,6 +104,9 @@ export class Magic extends DurableObject {
 							payload.numIndex,
 						);
 						break;
+					case "setReady":
+						await this.setReady(playerId);
+						break;
 				}
 			} catch {
 				ws.send(JSON.stringify({ error: "Invalid message" }));
@@ -135,6 +141,7 @@ export class Magic extends DurableObject {
 	async initialize(boardSize = 3) {
 		this.gameState = {
 			players: [],
+			playerStatus: {},
 			names: {},
 			round: 0,
 			turn: 0,
@@ -157,19 +164,13 @@ export class Magic extends DurableObject {
 		if (!this.gameState) {
 			await this.initialize();
 		}
-		if (
-			this.gameState &&
-			this.gameState.players.length !== 2 &&
-			!this.gameState.players.includes(playerId)
-		) {
+		if (this.gameState && !this.gameState.players.includes(playerId)) {
 			this.gameState.players.push(playerId);
 			this.gameState.names[playerId] = playerName;
+			this.gameState.playerStatus[playerId] = "preparing";
 
 			await this.ctx.storage.put("gameState", this.gameState);
 			this.broadcast({ type: "state", payload: this.gameState });
-		}
-		if (this.gameState && this.gameState.players.length === 2) {
-			this.startGame();
 		}
 	}
 
@@ -193,7 +194,12 @@ export class Magic extends DurableObject {
 			this.gameState.status === "one player"
 		)
 			return;
-		console.log(this.gameState.status);
+
+		this.gameState.status = "ok";
+		this.gameState.players.forEach((id) => {
+			if (this.gameState) this.gameState.playerStatus[id] = "playing";
+		});
+
 		// Initialize player hands and missions
 		for (const playerId of this.gameState.players) {
 			if (!this.gameState.hands[playerId])
@@ -204,7 +210,6 @@ export class Magic extends DurableObject {
 
 		await this.ctx.storage.put("gameState", this.gameState);
 		this.broadcast({ type: "state", payload: this.gameState });
-		this.gameState.status = "ok";
 	}
 
 	drawInitialHand() {
@@ -288,6 +293,21 @@ export class Magic extends DurableObject {
 
 		await this.ctx.storage.put("gameState", this.gameState);
 		this.broadcast({ type: "state", payload: this.gameState });
+	}
+	async setReady(player: string) {
+		if (!this.gameState) return;
+		this.gameState.playerStatus[player] = "ready";
+		if (
+			this.gameState.players.length >= 2 &&
+			this.gameState.players.every(
+				(p) => this.gameState?.playerStatus[p] === "ready",
+			)
+		) {
+			this.startGame();
+		} else {
+			await this.ctx.storage.put("gameState", this.gameState);
+			this.broadcast({ type: "state", payload: this.gameState });
+		}
 	}
 
 	isValidMove(player: string, x: number, y: number, num: number) {

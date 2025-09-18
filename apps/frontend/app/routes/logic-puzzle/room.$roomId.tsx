@@ -162,6 +162,7 @@ export default function RoomPage() {
 	const { roomId } = useParams();
 
 	const [gameState, setGameState] = useState<GameState | null>(null);
+	const [roomSecret, setRoomSecret] = useState<string | null>(null);
 	const ws = useRef<WebSocket | null>(null);
 
 	const opponentIds = user
@@ -173,6 +174,22 @@ export default function RoomPage() {
 	const [selectedOperation, setSelectedOperation] = useState<Operation>("add");
 
 	const [winnerDisplay, setWinnerDisplay] = useState(0);
+
+	useEffect(() => {
+		const fetchRoomSecret = async () => {
+			if (!roomId) return;
+			const res = await client.api.rooms[":roomId"].secret.$get({
+				param: { roomId: roomId },
+			});
+			if (res.ok) {
+				const roomSecret = await res.json();
+				setRoomSecret(roomSecret.secret);
+			} else {
+				navigate("/logic-puzzle/lobby");
+			}
+		};
+		fetchRoomSecret();
+	}, [navigate, roomId]);
 
 	// WebSocket connection effect
 	useEffect(() => {
@@ -239,6 +256,10 @@ export default function RoomPage() {
 		setWinnerDisplay(winnerDisplay - 1);
 	};
 
+	const handleReadyClick = () => {
+		sendWsMessage("setReady");
+	};
+
 	// --- Render Logic ---
 
 	if (!gameState || !user || !user.id || !currentPlayerId) {
@@ -249,13 +270,52 @@ export default function RoomPage() {
 		);
 	}
 
-	if (gameState.players.length < 2) {
+	// if (gameState.players.length < 2) {
+	// 	return (
+	// 		<div className="p-8 text-center">
+	// 			<h1 className="text-3xl font-bold">Waiting for opponent...</h1>
+	// 			<p className="mt-4">Room ID: {roomId}</p>
+	// 			<div className="mt-8">
+	// 				<span className="loading loading-lg loading-spinner"></span>
+	// 			</div>
+	// 		</div>
+	// 	);
+	// }
+
+	if (gameState.status === "loading") {
 		return (
-			<div className="p-8 text-center">
-				<h1 className="text-3xl font-bold">Waiting for opponent...</h1>
-				<p className="mt-4">Room ID: {roomId}</p>
-				<div className="mt-8">
-					<span className="loading loading-lg loading-spinner"></span>
+			<div className="flex h-screen w-full flex-col items-center justify-center gap-8">
+				<h1 className="text-2xl font-bold">
+					Waiting for players to be ready...
+				</h1>
+				<div className="flex flex-col items-center gap-1 rounded-lg bg-base-200 p-2 shadow-inner">
+					<span className="font-medium">Password</span>
+					<div className="rounded bg-base-300 p-1 text-4xl font-semibold">
+						{roomSecret}
+					</div>
+				</div>
+				<ul className="rounded-lg bg-base-200 p-4 shadow-inner">
+					{gameState.players.map((playerId) => (
+						<li
+							key={playerId}
+							className="flex items-center justify-between gap-4 p-2"
+						>
+							<span className="font-medium">{gameState.names[playerId]}</span>
+							<span
+								className={`rounded-full px-3 py-1 text-sm font-semibold ${gameState.playerStatus[playerId] === "ready" ? "bg-green-500 text-white" : "bg-gray-300 text-gray-700"}`}
+							>
+								{gameState.playerStatus[playerId] === "ready"
+									? "Ready!"
+									: "Preparing..."}
+							</span>
+						</li>
+					))}
+				</ul>
+				<div
+					onClick={handleReadyClick}
+					className={`card w-32 h-20 cursor-pointer items-center justify-center transition-colors duration-150 ${gameState.playerStatus[userId] === "ready" ? "bg-green-500 text-white font-bold" : "bg-base-300 text-grey-700 shadow-lg"}`}
+				>
+					{gameState.playerStatus[userId] === "ready" ? "READY!!" : "ready?"}
 				</div>
 			</div>
 		);
@@ -407,7 +467,7 @@ export default function RoomPage() {
 				/>
 				<GameBoard board={gameState.board} onCellClick={handleCellClick} />
 			</div>
-			{/* Player\'s Info */}
+			{/* Player's Info */}
 			<div className="flex flex-col items-center gap-4 mt-4">
 				{gameState.missions[user.id] && (
 					<Mission
