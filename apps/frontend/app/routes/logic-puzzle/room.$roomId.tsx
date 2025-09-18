@@ -1,27 +1,43 @@
 /** biome-ignore-all lint/a11y/noStaticElementInteractions: TODO */
 /** biome-ignore-all lint/suspicious/noArrayIndexKey: TODO */
 /** biome-ignore-all lint/a11y/useKeyWithClickEvents: TODO */
-import type { GameState, MoveAction, User } from "@apps/backend";
+import type {
+	GameState,
+	MessageType,
+	Operation,
+	Rule,
+	User,
+} from "@apps/backend";
 import { useEffect, useRef, useState } from "react";
-import type { ClientLoaderFunctionArgs } from "react-router";
-import { useLoaderData, useOutletContext, useParams } from "react-router";
-import type { Operation } from "../../../../backend/src/magic";
+import { useOutletContext, useParams } from "react-router";
 import { client } from "../../lib/client";
+import type { Route } from "./+types/room.$roomId";
 
-export async function clientLoader({ params }: ClientLoaderFunctionArgs) {
+export async function clientLoader({ params }: Route.ClientLoaderArgs) {
 	const { roomId } = params;
 	if (!roomId) {
 		throw new Response("Room ID not found", { status: 404 });
 	}
-	const res = await client.api.rooms[":roomId"].secret.$get({
+	const roomSecret = await client.api.rooms[":roomId"].secret.$get({
 		param: { roomId },
 	});
 
-	if (!res.ok) {
-		throw new Response("Failed to fetch room secret", { status: res.status });
+	if (!roomSecret.ok) {
+		throw new Response("Failed to fetch room secret", {
+			status: roomSecret.status,
+		});
 	}
-	const roomSecret = await res.json();
-	return roomSecret;
+
+	const roomSecretData = await roomSecret.json();
+
+	const room = await client.api.rooms[":roomId"].$get({ param: { roomId } });
+	if (!room.ok) {
+		throw new Response("Failed to fetch room", { status: room.status });
+	}
+
+	const roomData = await room.json();
+
+	return { secret: roomSecretData.secret, hostId: roomData.hostId };
 }
 
 // --- Game Components ---
@@ -34,7 +50,10 @@ function GameBoard({
 	onCellClick: (x: number, y: number) => void;
 }) {
 	return (
-		<div className="aspect-square bg-base-300 grid grid-cols-3 gap-2 p-2 rounded-lg shadow-inner">
+		<div
+			className="aspect-square bg-base-300 grid gap-2 p-2 rounded-lg shadow-inner"
+			style={{ gridTemplateColumns: `repeat(${board.length}, 1fr)` }}
+		>
 			{board.map((row, y) =>
 				row.map((cell, x) => (
 					<div
@@ -58,7 +77,10 @@ function FinalGameBoard({
 	winnerary: (true | false)[][];
 }) {
 	return (
-		<div className="aspect-square bg-base-300 grid grid-cols-3 gap-2 p-2 rounded-lg shadow-inner">
+		<div
+			className="aspect-square bg-base-300 grid gap-2 p-2 rounded-lg shadow-inner"
+			style={{ gridTemplateColumns: `repeat(${board.length}, 1fr)` }}
+		>
 			{board.map((row, y) =>
 				row.map((cell, x) =>
 					winnerary[y][x] === true ? (
@@ -174,8 +196,8 @@ function TurnDisplay({
 	);
 }
 
-export default function RoomPage() {
-	const { secret: roomSecret } = useLoaderData() as { secret: string };
+export default function RoomPage({ loaderData }: Route.ComponentProps) {
+	const { secret: roomSecret, hostId: roomHost } = loaderData;
 	const user = useOutletContext<User | null>();
 	const { roomId } = useParams();
 
@@ -233,23 +255,25 @@ export default function RoomPage() {
 		};
 	}, [roomId, user?.id, user?.name]);
 
-	const sendWsMessage = (type: string, payload?: MoveAction) => {
+	function sendWsMessage({ type, payload }: MessageType): void {
 		if (ws.current?.readyState === WebSocket.OPEN) {
 			const message = JSON.stringify({ type, payload });
 			console.log("[WS] Sending message:", message);
 			ws.current.send(message);
 		}
-	};
-
+	}
 	const handleCellClick = (x: number, y: number) => {
 		if (!gameState || !user || !user.id || selectedNumIndex === null) return;
 		// TODO: 正しいoperationとnumをいれる
-		sendWsMessage("makeMove", {
-			x,
-			y,
-			operation: selectedOperation,
-			num: gameState.hands[user.id][selectedNumIndex],
-			numIndex: selectedNumIndex,
+		sendWsMessage({
+			type: "makeMove",
+			payload: {
+				x,
+				y,
+				operation: selectedOperation,
+				num: gameState.hands[user.id][selectedNumIndex],
+				numIndex: selectedNumIndex,
+			},
 		});
 		setSelectedNumIndex(null);
 		setSelectedOperation("add");
@@ -264,31 +288,23 @@ export default function RoomPage() {
 	};
 
 	const handleReadyClick = () => {
-		sendWsMessage("setReady");
+		sendWsMessage({ type: "setReady" });
+	};
+
+	const handleRuleChange = (rule: Rule) => {
+		sendWsMessage({
+			type: "changeRule",
+			payload: rule,
+		});
 	};
 
 	// --- Render Logic ---
 
-	if (!roomId) {
+	if (!user || !roomId) {
 		return (
 			<div className="p-8 text-center">
 				<h1>Error: Room ID not found.</h1>
 				<p>Please ensure you are accessing a valid room.</p>
-			</div>
-		);
-	}
-
-	if (!user || !user.id) {
-		// This case should ideally be handled by the loader redirecting to lobby
-		// but as a fallback, display an authentication message.
-		return (
-			<div className="p-8 text-center">
-				<h1>Authentication Required</h1>
-				<p>Please log in to join the game.</p>
-				{/* Optionally, add a link to the lobby/login page */}
-				<a href="/logic-puzzle/lobby" className="btn btn-primary mt-4">
-					Go to Lobby
-				</a>
 			</div>
 		);
 	}
@@ -300,18 +316,6 @@ export default function RoomPage() {
 			</div>
 		);
 	}
-
-	// if (gameState.players.length < 2) {
-	// 	return (
-	// 		<div className="p-8 text-center">
-	// 			<h1 className="text-3xl font-bold">Waiting for opponent...</h1>
-	// 			<p className="mt-4">Room ID: {roomId}</p>
-	// 			<div className="mt-8">
-	// 				<span className="loading loading-lg loading-spinner"></span>
-	// 			</div>
-	// 		</div>
-	// 	);
-	// }
 
 	if (myStatus === "preparing" || myStatus === "ready") {
 		return (
@@ -342,6 +346,45 @@ export default function RoomPage() {
 						</li>
 					))}
 				</ul>
+				<div className="form-control">
+					<label className="label cursor-pointer">
+						<span className="label-text">Board Size</span>
+						<select
+							className="select select-bordered"
+							value={gameState.rules.boardSize}
+							disabled={user.id !== roomHost}
+							onChange={(e) =>
+								handleRuleChange({
+									rule: "boardSize",
+									state: parseInt(e.target.value, 10),
+								})
+							}
+						>
+							<option value={1}>1x1</option>
+							<option value={2}>2x2</option>
+							<option value={3}>3x3</option>
+							<option value={4}>4x4</option>
+							<option value={5}>5x5</option>
+						</select>
+					</label>
+				</div>
+				<div className="form-control">
+					<label className="label cursor-pointer">
+						<span className="label-text">Disable negative numbers</span>
+						<input
+							type="checkbox"
+							className="toggle toggle-success"
+							checked={gameState.rules.negativeDisabled}
+							disabled={user.id !== roomHost}
+							onChange={(e) =>
+								handleRuleChange({
+									rule: "negativeDisabled",
+									state: e.target.checked,
+								})
+							}
+						/>
+					</label>
+				</div>
 				<div
 					onClick={handleReadyClick}
 					className={`card w-32 h-20 cursor-pointer items-center justify-center transition-colors duration-150 ${myStatus === "ready" ? "bg-green-500 text-white font-bold" : "bg-base-300 text-grey-700 shadow-lg"}`}
@@ -375,8 +418,8 @@ export default function RoomPage() {
 					<div className="w-full max-w-md mx-auto">
 						<FinalGameBoard
 							board={gameState.board}
-							winnerary={Array.from({ length: gameState.boardSize }, () =>
-								Array(gameState?.boardSize).fill(false),
+							winnerary={Array.from({ length: gameState.rules.boardSize }, () =>
+								Array(gameState?.rules.boardSize).fill(false),
 							)}
 						/>
 					</div>

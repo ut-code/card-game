@@ -1,6 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
 import { type Mission, missions } from "./mission";
 
+const DEFAULT_BOARD_SIZE = 3;
+
 export type MoveAction = {
 	x: number;
 	y: number;
@@ -8,6 +10,10 @@ export type MoveAction = {
 	num: number;
 	numIndex: number;
 };
+
+export type Rule =
+	| { rule: "negativeDisabled"; state: boolean }
+	| { rule: "boardSize"; state: number };
 
 export type Operation = "add" | "sub";
 
@@ -28,7 +34,6 @@ export type GameState = {
 	round: number; // 0-indexed
 	turn: number; // 0 ~ players.length-1 players[turn]'s turn
 	board: (number | null)[][];
-	boardSize: number;
 	winners: string[] | null;
 	winnersAry: {
 		[playerId: string]: (true | false)[][];
@@ -43,7 +48,16 @@ export type GameState = {
 			mission: Mission;
 		};
 	};
+	rules: {
+		negativeDisabled: boolean;
+		boardSize: number;
+	};
 };
+
+export type MessageType =
+	| { type: "makeMove"; payload: MoveAction }
+	| { type: "setReady"; payload?: undefined }
+	| { type: "changeRule"; payload: Rule };
 
 interface Session {
 	ws: WebSocket;
@@ -97,9 +111,8 @@ export class Magic extends DurableObject {
 
 		ws.addEventListener("message", async (msg) => {
 			try {
-				// TODO: 型をつける
-				const { type, payload } = JSON.parse(msg.data as string);
-
+				// TODO: 型をつける ✅
+				const { type, payload } = JSON.parse(msg.data as string) as MessageType;
 				switch (type) {
 					case "makeMove":
 						await this.makeMove(
@@ -113,6 +126,9 @@ export class Magic extends DurableObject {
 						break;
 					case "setReady":
 						await this.setReady(playerId);
+						break;
+					case "changeRule":
+						await this.changeRule(payload);
 						break;
 				}
 			} catch {
@@ -144,23 +160,26 @@ export class Magic extends DurableObject {
 
 	// --- Game Logic Methods ---
 
-	async initialize(boardSize = 3) {
+	async initialize() {
 		this.gameState = {
 			players: [],
 			playerStatus: {},
 			names: {},
 			round: 0,
 			turn: 0,
-			board: Array(boardSize)
+			board: Array(DEFAULT_BOARD_SIZE)
 				.fill(null)
-				.map(() => Array(boardSize).fill(null)),
-			boardSize: boardSize,
+				.map(() => Array(DEFAULT_BOARD_SIZE).fill(null)),
 			winners: null,
 			winnersAry: {},
 			gameId: this.ctx.id.toString(),
 			hands: {},
 			missions: {},
 			status: "preparing",
+			rules: {
+				negativeDisabled: false,
+				boardSize: DEFAULT_BOARD_SIZE,
+			},
 		};
 		await this.ctx.storage.put("gameState", this.gameState);
 		this.broadcast({ type: "state", payload: this.gameState });
@@ -401,6 +420,21 @@ export class Magic extends DurableObject {
 		}
 	}
 
+	async changeRule(payload: Rule) {
+		if (!this.gameState) return;
+		if (payload.rule === "negativeDisabled") {
+			this.gameState.rules.negativeDisabled = payload.state;
+		} else if (payload.rule === "boardSize") {
+			this.gameState.rules.boardSize = payload.state;
+			this.gameState.board = Array(payload.state)
+				.fill(null)
+				.map(() => Array(payload.state).fill(null));
+		}
+		console.log(this.gameState.rules);
+		await this.ctx.storage.put("gameState", this.gameState);
+		this.broadcast({ type: "state", payload: this.gameState });
+	}
+
 	isValidMove(player: string, x: number, y: number, num: number) {
 		if (!this.gameState) throw new Error("Game state is not initialized");
 
@@ -448,7 +482,9 @@ export class Magic extends DurableObject {
 			case "add":
 				return prev + num;
 			case "sub":
-				return prev - num;
+				return num > prev && this.gameState.rules.negativeDisabled
+					? num - prev
+					: prev - num;
 			default:
 				return operation satisfies never;
 		}
@@ -456,29 +492,29 @@ export class Magic extends DurableObject {
 
 	isVictory(mission: Mission) {
 		if (!this.gameState) throw new Error("Game state is not initialized");
-		const matrix = Array.from({ length: this.gameState.boardSize }, () =>
-			Array(this.gameState?.boardSize).fill(false),
+		const matrix = Array.from({ length: this.gameState.rules.boardSize }, () =>
+			Array(this.gameState?.rules.boardSize).fill(false),
 		);
 		if (mission.target === "column" || mission.target === "allDirection") {
-			for (let i = 0; i < this.gameState.boardSize; i++) {
+			for (let i = 0; i < this.gameState.rules.boardSize; i++) {
 				const columnary = this.gameState.board[i].filter(
 					(value) => value !== null,
 				);
 				if (this.isWinner(columnary, mission)) {
-					matrix[i] = Array(this.gameState.boardSize).fill(true);
+					matrix[i] = Array(this.gameState.rules.boardSize).fill(true);
 				}
 			}
 		}
 
 		if (mission.target === "row" || mission.target === "allDirection") {
-			for (let i = 0; i < this.gameState.boardSize; i++) {
+			for (let i = 0; i < this.gameState.rules.boardSize; i++) {
 				const nullinary = [];
-				for (let j = 0; j < this.gameState.boardSize; j++) {
+				for (let j = 0; j < this.gameState.rules.boardSize; j++) {
 					nullinary.push(this.gameState.board[j][i]);
 				}
 				const rowary = nullinary.filter((value) => value !== null);
 				if (this.isWinner(rowary, mission)) {
-					for (let j = 0; j < this.gameState.boardSize; j++) {
+					for (let j = 0; j < this.gameState.rules.boardSize; j++) {
 						matrix[j][i] = true;
 					}
 				}
@@ -488,24 +524,24 @@ export class Magic extends DurableObject {
 		if (mission.target === "diagonal" || mission.target === "allDirection") {
 			for (let i = 0; i < 2; i++) {
 				const nullinary = [];
-				for (let j = 0; j < this.gameState.boardSize; j++) {
+				for (let j = 0; j < this.gameState.rules.boardSize; j++) {
 					if (i === 0) {
 						nullinary.push(
-							this.gameState.board[j][this.gameState.boardSize - j - 1],
+							this.gameState.board[j][this.gameState.rules.boardSize - j - 1],
 						);
 					} else {
 						nullinary.push(
-							this.gameState.board[this.gameState.boardSize - j - 1][j],
+							this.gameState.board[this.gameState.rules.boardSize - j - 1][j],
 						);
 					}
 				}
 				const diaary = nullinary.filter((value) => value !== null);
 				if (this.isWinner(diaary, mission)) {
-					for (let j = 0; j < this.gameState.boardSize; j++) {
+					for (let j = 0; j < this.gameState.rules.boardSize; j++) {
 						if (i === 0) {
-							matrix[j][this.gameState.boardSize - j - 1] = true;
+							matrix[j][this.gameState.rules.boardSize - j - 1] = true;
 						} else {
-							matrix[this.gameState.boardSize - j - 1][j] = true;
+							matrix[this.gameState.rules.boardSize - j - 1][j] = true;
 						}
 					}
 				}
@@ -514,8 +550,8 @@ export class Magic extends DurableObject {
 
 		if (mission.target === "allCell") {
 			const nullinary = [];
-			for (let i = 0; i < this.gameState.boardSize; i++) {
-				for (let j = 0; j < this.gameState.boardSize; j++) {
+			for (let i = 0; i < this.gameState.rules.boardSize; i++) {
+				for (let j = 0; j < this.gameState.rules.boardSize; j++) {
 					nullinary.push(this.gameState.board[i][j]);
 				}
 			}
@@ -562,10 +598,10 @@ export class Magic extends DurableObject {
 
 	isWinner(obary: number[], mission: Mission) {
 		if (!this.gameState) throw new Error("Game state is not initialized");
-		if (obary.length === this.gameState.boardSize) {
+		if (obary.length === this.gameState.rules.boardSize) {
 			if (mission.type === "sum") {
 				let hikaku = 0;
-				for (let j = 0; j < this.gameState.boardSize; j++) {
+				for (let j = 0; j < this.gameState.rules.boardSize; j++) {
 					hikaku += obary[j];
 				}
 				if (hikaku === mission.number) {
@@ -574,7 +610,7 @@ export class Magic extends DurableObject {
 			}
 			if (mission.type === "multipile") {
 				let hikaku = 0;
-				for (let j = 0; j < this.gameState.boardSize; j++) {
+				for (let j = 0; j < this.gameState.rules.boardSize; j++) {
 					hikaku += obary[j] % mission.number;
 				}
 				if (hikaku === 0) {
@@ -584,35 +620,35 @@ export class Magic extends DurableObject {
 			if (mission.type === "arithmetic") {
 				obary.sort((first, second) => first - second);
 				let hikaku = 0;
-				for (let j = 1; j < this.gameState.boardSize; j++) {
+				for (let j = 1; j < this.gameState.rules.boardSize; j++) {
 					if (obary[j] - obary[j - 1] === mission.number) {
 						hikaku += 1;
 					}
 				}
-				if (hikaku === this.gameState.boardSize - 1) {
+				if (hikaku === this.gameState.rules.boardSize - 1) {
 					return true;
 				}
 			}
 			if (mission.type === "geometic") {
 				obary.sort((first, second) => first - second);
 				let hikaku = 0;
-				for (let j = 1; j < this.gameState.boardSize; j++) {
+				for (let j = 1; j < this.gameState.rules.boardSize; j++) {
 					if (obary[j] === obary[j - 1] * mission.number) {
 						hikaku += 1;
 					}
 				}
-				if (hikaku === this.gameState.boardSize - 1) {
+				if (hikaku === this.gameState.rules.boardSize - 1) {
 					return true;
 				}
 			}
 			if (mission.type === "prime") {
 				let hikaku = 0;
-				for (let j = 0; j < this.gameState.boardSize; j++) {
+				for (let j = 0; j < this.gameState.rules.boardSize; j++) {
 					if (this.prime(obary[j])) {
 						hikaku += 1;
 					}
 				}
-				if (hikaku === this.gameState.boardSize) {
+				if (hikaku === this.gameState.rules.boardSize) {
 					return true;
 				}
 			}

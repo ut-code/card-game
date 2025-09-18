@@ -27,5 +27,9 @@
 	"type": "module",
 	"workspaces": [
 		"apps/*"
-	]
+	],
+	"dependencies": {
+		"@types/node": "^24.5.1",
+		"@types/pg": "^8.15.5"
+	}
 }
