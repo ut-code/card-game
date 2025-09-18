@@ -12,7 +12,16 @@ export type MoveAction = {
 export type Operation = "add" | "sub";
 
 export type GameState = {
+	status: "preparing" | "playing" | "paused";
 	players: string[];
+	playerStatus: {
+		[playerId: string]:
+			| "preparing"
+			| "ready"
+			| "playing"
+			| "finished"
+			| "error";
+	};
 	names: {
 		[playerId: string]: string;
 	};
@@ -34,7 +43,6 @@ export type GameState = {
 			mission: Mission;
 		};
 	};
-	status: "loading" | "ok" | "one player";
 };
 
 interface Session {
@@ -68,6 +76,9 @@ export class Magic extends DurableObject {
 		}
 
 		const { 0: client, 1: server } = new WebSocketPair();
+
+		if (!this.gameState) await this.initialize();
+
 		await this.handleSession(server, playerId, playerName);
 
 		return new Response(null, {
@@ -82,7 +93,6 @@ export class Magic extends DurableObject {
 
 		ws.accept();
 
-		// Add player to the game state if not already present
 		await this.addPlayer(playerId, playerName);
 
 		ws.addEventListener("message", async (msg) => {
@@ -101,6 +111,9 @@ export class Magic extends DurableObject {
 							payload.numIndex,
 						);
 						break;
+					case "setReady":
+						await this.setReady(playerId);
+						break;
 				}
 			} catch {
 				ws.send(JSON.stringify({ error: "Invalid message" }));
@@ -109,8 +122,7 @@ export class Magic extends DurableObject {
 
 		const closeOrErrorHandler = () => {
 			this.sessions = this.sessions.filter((s) => s !== session);
-			// remove player from game state on disconnect
-			this.removePlayer(playerId);
+			this.updateDisconnectedPlayer(playerId);
 		};
 		ws.addEventListener("close", closeOrErrorHandler);
 		ws.addEventListener("error", closeOrErrorHandler);
@@ -135,6 +147,7 @@ export class Magic extends DurableObject {
 	async initialize(boardSize = 3) {
 		this.gameState = {
 			players: [],
+			playerStatus: {},
 			names: {},
 			round: 0,
 			turn: 0,
@@ -147,7 +160,7 @@ export class Magic extends DurableObject {
 			gameId: this.ctx.id.toString(),
 			hands: {},
 			missions: {},
-			status: "loading",
+			status: "preparing",
 		};
 		await this.ctx.storage.put("gameState", this.gameState);
 		this.broadcast({ type: "state", payload: this.gameState });
@@ -155,56 +168,130 @@ export class Magic extends DurableObject {
 
 	async addPlayer(playerId: string, playerName: string) {
 		if (!this.gameState) {
-			await this.initialize();
+			console.error("Game state is not initialized");
+			return;
 		}
-		if (
-			this.gameState &&
-			this.gameState.players.length !== 2 &&
-			!this.gameState.players.includes(playerId)
-		) {
-			this.gameState.players.push(playerId);
-			this.gameState.names[playerId] = playerName;
+		console.log(
+			"Adding player:",
+			playerId,
+			playerName,
+			this.gameState.players.includes(playerId),
+		);
+
+		// New player
+		if (!this.gameState.players.includes(playerId)) {
+			switch (this.gameState.status) {
+				case "preparing":
+					if (!this.gameState.players.includes(playerId)) {
+						this.gameState.players.push(playerId);
+						this.gameState.names[playerId] = playerName;
+						this.gameState.playerStatus[playerId] = "preparing";
+
+						await this.ctx.storage.put("gameState", this.gameState);
+						this.broadcast({ type: "state", payload: this.gameState });
+					}
+					break;
+				case "playing":
+					console.error("Game already started, cannot join now.");
+					break;
+				case "paused":
+					if (this.gameState.players.includes(playerId)) {
+						this.gameState.playerStatus[playerId] = "playing";
+						if (
+							Object.values(this.gameState.playerStatus).every(
+								(status) => status === "playing",
+							)
+						) {
+							console.log("All players reconnected, resuming game.");
+							this.gameState.status = "playing";
+						} else {
+							console.log("Waiting for other players to reconnect.");
+						}
+						await this.ctx.storage.put("gameState", this.gameState);
+						this.broadcast({ type: "state", payload: this.gameState });
+					} else {
+						console.error("Game already started, cannot join now.");
+					}
+					break;
+				default:
+					this.gameState.status satisfies never;
+			}
+		} else {
+			// Reconnecting player
+			if (this.gameState.playerStatus[playerId] !== "error") {
+				throw new Error(
+					`Player is already connected but tried to connect again: ${this.gameState.playerStatus[playerId]}`,
+				);
+			}
+			switch (this.gameState.status) {
+				case "preparing":
+					this.gameState.playerStatus[playerId] = "preparing";
+					break;
+				case "playing":
+					throw new Error("Game already started, but trying to reconnect.");
+				case "paused":
+					this.gameState.playerStatus[playerId] = "playing";
+					if (
+						Object.values(this.gameState.playerStatus).every(
+							(status) => status === "playing",
+						)
+					) {
+						console.log("All players reconnected, resuming game.");
+						this.gameState.status = "playing";
+					} else {
+						console.log("Waiting for other players to reconnect.");
+					}
+					break;
+				default:
+					this.gameState.status satisfies never;
+			}
 
 			await this.ctx.storage.put("gameState", this.gameState);
 			this.broadcast({ type: "state", payload: this.gameState });
 		}
-		if (this.gameState && this.gameState.players.length === 2) {
-			this.startGame();
-		}
 	}
 
-	async removePlayer(playerId: string) {
+	async updateDisconnectedPlayer(playerId: string) {
 		if (!this.gameState) throw new Error("Game state is not initialized");
-		this.gameState.players = this.gameState.players.filter(
-			(player) => player !== playerId,
-		);
-		delete this.gameState.names[playerId];
-		delete this.gameState.hands[playerId];
-		delete this.gameState.missions[playerId];
-		if (this.gameState.players.length === 1) {
-			this.gameState.status = "one player";
-		}
-	}
 
-	async startGame() {
-		if (
-			!this.gameState ||
-			this.gameState.status === "ok" ||
-			this.gameState.status === "one player"
-		)
+		if (!this.gameState.players.includes(playerId)) {
+			console.error("Player not found in game:", playerId);
 			return;
-		console.log(this.gameState.status);
-		// Initialize player hands and missions
-		for (const playerId of this.gameState.players) {
-			if (!this.gameState.hands[playerId])
-				this.gameState.hands[playerId] = this.drawInitialHand();
-			if (!this.gameState.missions[playerId])
-				this.gameState.missions[playerId] = this.getRandomMission();
+		}
+		this.gameState.playerStatus[playerId] = "error";
+		if (this.gameState.status !== "preparing") {
+			this.gameState.status = "paused";
 		}
 
 		await this.ctx.storage.put("gameState", this.gameState);
 		this.broadcast({ type: "state", payload: this.gameState });
-		this.gameState.status = "ok";
+	}
+
+	async startGame() {
+		if (!this.gameState || this.gameState.status !== "preparing") return;
+		for (const playerId of this.gameState.players) {
+			if (this.gameState.playerStatus[playerId] !== "ready") {
+				console.error("one of the players not ready:", playerId);
+				return;
+			}
+			this.gameState.playerStatus[playerId] = "playing";
+
+			if (this.gameState.hands[playerId]) {
+				console.error("player already has a hand:", playerId);
+				return;
+			}
+			this.gameState.hands[playerId] = this.drawInitialHand();
+
+			if (this.gameState.missions[playerId]) {
+				console.error("player already has a mission:", playerId);
+				return;
+			}
+			this.gameState.missions[playerId] = this.getRandomMission();
+		}
+		this.gameState.status = "playing";
+
+		await this.ctx.storage.put("gameState", this.gameState);
+		this.broadcast({ type: "state", payload: this.gameState });
 	}
 
 	drawInitialHand() {
@@ -286,8 +373,32 @@ export class Magic extends DurableObject {
 			}
 		}
 
+		if (this.gameState.winners) {
+			this.gameState.status = "preparing";
+			Object.keys(this.gameState.playerStatus).forEach((playerId) => {
+				if (!this.gameState) throw new Error("Game state is not initialized");
+				this.gameState.playerStatus[playerId] = "finished";
+			});
+		}
+
 		await this.ctx.storage.put("gameState", this.gameState);
 		this.broadcast({ type: "state", payload: this.gameState });
+	}
+
+	async setReady(player: string) {
+		if (!this.gameState) return;
+		this.gameState.playerStatus[player] = "ready";
+		if (
+			this.gameState.players.length >= 2 &&
+			this.gameState.players.every(
+				(p) => this.gameState?.playerStatus[p] === "ready",
+			)
+		) {
+			this.startGame();
+		} else {
+			await this.ctx.storage.put("gameState", this.gameState);
+			this.broadcast({ type: "state", payload: this.gameState });
+		}
 	}
 
 	isValidMove(player: string, x: number, y: number, num: number) {

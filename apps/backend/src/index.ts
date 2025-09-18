@@ -39,11 +39,13 @@ const authMiddleware = createMiddleware<{ Variables: Variables }>(
 			include: { user: true },
 		});
 
-		if (!session || !session.user) {
+		const user = session?.user;
+
+		if (!user) {
 			return c.json({ error: "Invalid session" }, 401);
 		}
 
-		c.set("user", session.user);
+		c.set("user", user);
 		await next();
 	},
 );
@@ -214,7 +216,27 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
 		return c.json({ message: "Left room successfully" });
 	})
-
+	.get("/rooms/:roomId/secret", authMiddleware, async (c) => {
+		const prisma = c.get("prisma");
+		const user = c.get("user");
+		const { roomId } = c.req.param();
+		const room = await prisma.room.findUnique({
+			where: { id: roomId },
+		});
+		if (!room) {
+			return c.json({ error: "Room not found" }, 404);
+		}
+		if (!room.users.some((id) => id === user?.id)) {
+			return c.json({ error: "Unauthorized" }, 403);
+		}
+		const roomSecret = await prisma.roomSecret.findUnique({
+			where: { roomId: roomId },
+		});
+		if (!roomSecret) {
+			return c.json({ error: "Room not found" }, 404);
+		}
+		return c.json(roomSecret);
+	})
 	.get("/games/:id/ws", authMiddleware, async (c) => {
 		const gameId = c.req.param("id");
 		const user = c.get("user");
