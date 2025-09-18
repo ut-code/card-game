@@ -3,9 +3,26 @@
 /** biome-ignore-all lint/a11y/useKeyWithClickEvents: TODO */
 import type { GameState, MoveAction, User } from "@apps/backend";
 import { useEffect, useRef, useState } from "react";
-import { useOutletContext, useParams } from "react-router";
+import type { ClientLoaderFunctionArgs } from "react-router";
+import { useLoaderData, useOutletContext, useParams } from "react-router";
 import type { Operation } from "../../../../backend/src/magic";
 import { client } from "../../lib/client";
+
+export async function clientLoader({ params }: ClientLoaderFunctionArgs) {
+	const { roomId } = params;
+	if (!roomId) {
+		throw new Response("Room ID not found", { status: 404 });
+	}
+	const res = await client.api.rooms[":roomId"].secret.$get({
+		param: { roomId },
+	});
+
+	if (!res.ok) {
+		throw new Response("Failed to fetch room secret", { status: res.status });
+	}
+	const roomSecret = await res.json();
+	return roomSecret;
+}
 
 // --- Game Components ---
 
@@ -158,11 +175,11 @@ function TurnDisplay({
 }
 
 export default function RoomPage() {
+	const { secret: roomSecret } = useLoaderData() as { secret: string };
 	const user = useOutletContext<User | null>();
 	const { roomId } = useParams();
 
 	const [gameState, setGameState] = useState<GameState | null>(null);
-	const [roomSecret, setRoomSecret] = useState<string | null>(null);
 	const myStatus = user?.id
 		? (gameState?.playerStatus[user?.id] ?? null)
 		: null;
@@ -177,20 +194,6 @@ export default function RoomPage() {
 	const [selectedOperation, setSelectedOperation] = useState<Operation>("add");
 
 	const [winnerDisplay, setWinnerDisplay] = useState(0);
-
-	useEffect(() => {
-		const fetchRoomSecret = async () => {
-			if (!roomId) return;
-			const res = await client.api.rooms[":roomId"].secret.$get({
-				param: { roomId: roomId },
-			});
-			if (res.ok) {
-				const roomSecret = await res.json();
-				setRoomSecret(roomSecret.secret);
-			}
-		};
-		fetchRoomSecret();
-	}, [roomId]);
 
 	// WebSocket connection effect
 	useEffect(() => {
@@ -292,9 +295,8 @@ export default function RoomPage() {
 
 	if (!gameState || !currentPlayerId) {
 		return (
-			<div className="p-8 text-center">
-				<h1>Loading Game State...</h1>
-				<p>Waiting for game data from the server.</p>
+			<div className="flex items-center justify-center min-h-screen">
+				<div className="loading loading-spinner loading-lg" />
 			</div>
 		);
 	}

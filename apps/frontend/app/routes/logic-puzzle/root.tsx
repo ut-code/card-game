@@ -45,7 +45,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
 }
 
 export function HydrateFallback() {
-	return <div>Loading...</div>;
+	return (
+		<div className="flex items-center justify-center min-h-screen">
+			<div className="loading loading-spinner loading-lg" />
+		</div>
+	);
 }
 
 export default function LogicPuzzleLayout() {
