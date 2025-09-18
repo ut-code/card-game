@@ -1,10 +1,9 @@
 /** biome-ignore-all lint/a11y/noStaticElementInteractions: TODO */
 /** biome-ignore-all lint/suspicious/noArrayIndexKey: TODO */
 /** biome-ignore-all lint/a11y/useKeyWithClickEvents: TODO */
-import type { GameState, MoveAction } from "@apps/backend";
+import type { GameState, MessageType, Operation, Rule } from "@apps/backend";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import type { Operation } from "../../../../backend/src/magic";
 import { client } from "../../lib/client";
 
 // --- Game Components ---
@@ -164,6 +163,7 @@ export default function RoomPage() {
 	const [userId, setUserId] = useState<string | null>(null);
 	const [userName, setUserName] = useState<string | null>(null);
 	const [gameState, setGameState] = useState<GameState | null>(null);
+	const [roomHost, setRoomHost] = useState<string | null>(null);
 	const [roomSecret, setRoomSecret] = useState<string | null>(null);
 	const ws = useRef<WebSocket | null>(null);
 
@@ -188,6 +188,19 @@ export default function RoomPage() {
 			}
 		};
 		fetchUser();
+		const fetchRoom = async () => {
+			if (!roomId) return;
+			const res = await client.api.rooms[":roomId"].$get({
+				param: { roomId: roomId },
+			});
+			if (res.ok) {
+				const room = await res.json();
+				setRoomHost(room.hostId);
+			} else {
+				navigate("/logic-puzzle/lobby");
+			}
+		};
+		fetchRoom();
 		const fetchRoomSecret = async () => {
 			if (!roomId) return;
 			const res = await client.api.rooms[":roomId"].secret.$get({
@@ -238,23 +251,25 @@ export default function RoomPage() {
 		return () => socket.close();
 	}, [roomId, userId, userName]);
 
-	const sendWsMessage = (type: string, payload?: MoveAction) => {
+	function sendWsMessage({ type, payload }: MessageType): void {
 		if (ws.current?.readyState === WebSocket.OPEN) {
 			const message = JSON.stringify({ type, payload });
 			console.log("[WS] Sending message:", message);
 			ws.current.send(message);
 		}
-	};
-
+	}
 	const handleCellClick = (x: number, y: number) => {
 		if (!gameState || !userId || selectedNumIndex === null) return;
 		// TODO: 正しいoperationとnumをいれる
-		sendWsMessage("makeMove", {
-			x,
-			y,
-			operation: selectedOperation,
-			num: gameState.hands[userId][selectedNumIndex],
-			numIndex: selectedNumIndex,
+		sendWsMessage({
+			type: "makeMove",
+			payload: {
+				x,
+				y,
+				operation: selectedOperation,
+				num: gameState.hands[userId][selectedNumIndex],
+				numIndex: selectedNumIndex,
+			},
 		});
 		setSelectedNumIndex(null);
 		setSelectedOperation("add");
@@ -269,7 +284,14 @@ export default function RoomPage() {
 	};
 
 	const handleReadyClick = () => {
-		sendWsMessage("setReady");
+		sendWsMessage({ type: "setReady" });
+	};
+
+	const handleRuleChange = ({ rule, state }: Rule) => {
+		sendWsMessage({
+			type: "changeRule",
+			payload: { rule: rule, state: state },
+		});
 	};
 
 	// --- Render Logic ---
@@ -323,6 +345,23 @@ export default function RoomPage() {
 						</li>
 					))}
 				</ul>
+				<div className="form-control">
+					<label className="label cursor-pointer">
+						<span className="label-text">Disable negative numbers</span>
+						<input
+							type="checkbox"
+							className="toggle toggle-success"
+							checked={gameState.rules.negativeDisabled}
+							disabled={userId !== roomHost}
+							onChange={(e) =>
+								handleRuleChange({
+									rule: "negativeDisabled",
+									state: e.target.checked,
+								})
+							}
+						/>
+					</label>
+				</div>
 				<div
 					onClick={handleReadyClick}
 					className={`card w-32 h-20 cursor-pointer items-center justify-center transition-colors duration-150 ${gameState.playerStatus[userId] === "ready" ? "bg-green-500 text-white font-bold" : "bg-base-300 text-grey-700 shadow-lg"}`}

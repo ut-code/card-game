@@ -9,6 +9,8 @@ export type MoveAction = {
 	numIndex: number;
 };
 
+export type Rule = { rule: "negativeDisabled"; state: boolean };
+
 export type Operation = "add" | "sub";
 
 export type GameState = {
@@ -38,7 +40,15 @@ export type GameState = {
 		};
 	};
 	status: "loading" | "ok" | "one player";
+	rules: {
+		negativeDisabled: boolean;
+	};
 };
+
+export type MessageType =
+	| { type: "makeMove"; payload: MoveAction }
+	| { type: "setReady"; payload?: undefined }
+	| { type: "changeRule"; payload: Rule };
 
 interface Session {
 	ws: WebSocket;
@@ -90,9 +100,8 @@ export class Magic extends DurableObject {
 
 		ws.addEventListener("message", async (msg) => {
 			try {
-				// TODO: 型をつける
-				const { type, payload } = JSON.parse(msg.data as string);
-
+				// TODO: 型をつける ✅
+				const { type, payload } = JSON.parse(msg.data as string) as MessageType;
 				switch (type) {
 					case "makeMove":
 						await this.makeMove(
@@ -106,6 +115,9 @@ export class Magic extends DurableObject {
 						break;
 					case "setReady":
 						await this.setReady(playerId);
+						break;
+					case "changeRule":
+						await this.changeRule(payload);
 						break;
 				}
 			} catch {
@@ -155,6 +167,9 @@ export class Magic extends DurableObject {
 			hands: {},
 			missions: {},
 			status: "loading",
+			rules: {
+				negativeDisabled: false,
+			},
 		};
 		await this.ctx.storage.put("gameState", this.gameState);
 		this.broadcast({ type: "state", payload: this.gameState });
@@ -310,6 +325,14 @@ export class Magic extends DurableObject {
 		}
 	}
 
+	async changeRule({ rule, state }: Rule) {
+		if (!this.gameState) return;
+		this.gameState.rules[rule] = state;
+		console.log(this.gameState.rules);
+		await this.ctx.storage.put("gameState", this.gameState);
+		this.broadcast({ type: "state", payload: this.gameState });
+	}
+
 	isValidMove(player: string, x: number, y: number, num: number) {
 		if (!this.gameState) throw new Error("Game state is not initialized");
 
@@ -357,7 +380,9 @@ export class Magic extends DurableObject {
 			case "add":
 				return prev + num;
 			case "sub":
-				return prev - num;
+				return num > prev && this.gameState.rules.negativeDisabled
+					? num - prev
+					: prev - num;
 			default:
 				return operation satisfies never;
 		}
