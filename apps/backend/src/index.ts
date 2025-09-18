@@ -111,7 +111,7 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
 		const { name } = await c.req.json<{ name: string }>();
 		if (!name) {
-			return c.json({ error: "Room name is requirecd" }, 400);
+			return c.json({ error: "Room name is required" }, 400);
 		}
 
 		const secret = randomInt(100000, 999999).toString();
@@ -172,6 +172,17 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 			return c.json({ error: "Room not found" }, 404);
 		}
 		return c.json(room);
+	})
+	.get("/rooms/:roomId/secret", async (c) => {
+		const prisma = c.get("prisma");
+		const { roomId } = c.req.param();
+		const roomSecret = await prisma.roomSecret.findUnique({
+			where: { roomId: roomId },
+		});
+		if (!roomSecret) {
+			return c.json({ error: "Room not found" }, 404);
+		}
+		return c.json(roomSecret);
 	})
 	.post("/rooms/:roomId/join", authMiddleware, async (c) => {
 		const prisma = c.get("prisma");
