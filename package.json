@@ -15,12 +15,14 @@
 		"dev": "bun run --filter='@apps/{frontend,backend}' dev",
 		"dev:frontend": "cd ./apps/frontend && bun run dev",
 		"dev:backend": "cd ./apps/backend && bun run dev",
+		"db": "cd ./apps/backend && bun run db",
 		"fix": "bunx --bun biome check --write .",
 		"fix:format": "bunx --bun biome format --write .",
 		"fix:lint": "bunx --bun biome lint --write .",
 		"check": "bunx --bun biome check .",
 		"check:format": "bunx --bun biome format .",
-		"check:lint": "bunx --bun biome lint ."
+		"check:lint": "bunx --bun biome lint .",
+		"check:type": "tsc --noEmit"
 	},
 	"type": "module",
 	"workspaces": [
