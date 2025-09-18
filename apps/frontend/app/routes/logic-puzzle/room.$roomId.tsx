@@ -16,7 +16,10 @@ function GameBoard({
 	onCellClick: (x: number, y: number) => void;
 }) {
 	return (
-		<div className="aspect-square bg-base-300 grid grid-cols-3 gap-2 p-2 rounded-lg shadow-inner">
+		<div
+			className="aspect-square bg-base-300 grid gap-2 p-2 rounded-lg shadow-inner"
+			style={{ gridTemplateColumns: `repeat(${board.length}, 1fr)` }}
+		>
 			{board.map((row, y) =>
 				row.map((cell, x) => (
 					<div
@@ -40,7 +43,10 @@ function FinalGameBoard({
 	winnerary: (true | false)[][];
 }) {
 	return (
-		<div className="aspect-square bg-base-300 grid grid-cols-3 gap-2 p-2 rounded-lg shadow-inner">
+		<div
+			className="aspect-square bg-base-300 grid gap-2 p-2 rounded-lg shadow-inner"
+			style={{ gridTemplateColumns: `repeat(${board.length}, 1fr)` }}
+		>
 			{board.map((row, y) =>
 				row.map((cell, x) =>
 					winnerary[y][x] === true ? (
@@ -287,10 +293,10 @@ export default function RoomPage() {
 		sendWsMessage({ type: "setReady" });
 	};
 
-	const handleRuleChange = ({ rule, state }: Rule) => {
+	const handleRuleChange = (rule: Rule) => {
 		sendWsMessage({
 			type: "changeRule",
-			payload: { rule: rule, state: state },
+			payload: rule,
 		});
 	};
 
@@ -347,6 +353,28 @@ export default function RoomPage() {
 				</ul>
 				<div className="form-control">
 					<label className="label cursor-pointer">
+						<span className="label-text">Board Size</span>
+						<select
+							className="select select-bordered"
+							value={gameState.rules.boardSize}
+							disabled={userId !== roomHost}
+							onChange={(e) =>
+								handleRuleChange({
+									rule: "boardSize",
+									state: parseInt(e.target.value, 10),
+								})
+							}
+						>
+							<option value={1}>1x1</option>
+							<option value={2}>2x2</option>
+							<option value={3}>3x3</option>
+							<option value={4}>4x4</option>
+							<option value={5}>5x5</option>
+						</select>
+					</label>
+				</div>
+				<div className="form-control">
+					<label className="label cursor-pointer">
 						<span className="label-text">Disable negative numbers</span>
 						<input
 							type="checkbox"
@@ -392,8 +420,8 @@ export default function RoomPage() {
 					<div className="w-full max-w-md mx-auto">
 						<FinalGameBoard
 							board={gameState.board}
-							winnerary={Array.from({ length: gameState.boardSize }, () =>
-								Array(gameState?.boardSize).fill(false),
+							winnerary={Array.from({ length: gameState.rules.boardSize }, () =>
+								Array(gameState?.rules.boardSize).fill(false),
 							)}
 						/>
 					</div>
