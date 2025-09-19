@@ -182,9 +182,22 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 		}
 		return c.json(room);
 	})
-	.get("/rooms/:roomId/secret", async (c) => {
+	.get("/rooms/:roomId/secret", authMiddleware, async (c) => {
+		const user = c.get("user");
+		if (!user) {
+			return c.json({ error: "Not authenticated" }, 401);
+		}
 		const prisma = c.get("prisma");
 		const { roomId } = c.req.param();
+		const room = await prisma.room.findUnique({
+			where: { id: roomId },
+		});
+		if (!room) {
+			return c.json({ error: "Room not found" }, 404);
+		}
+		if (!room.users.includes(user.id)) {
+			return c.json({ error: "Unauthorized" }, 403);
+		}
 		const roomSecret = await prisma.roomSecret.findUnique({
 			where: { roomId: roomId },
 		});
@@ -194,6 +207,7 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 		return c.json(roomSecret);
 	})
 	.post("/rooms/:roomId/join", authMiddleware, async (c) => {
+		// for development
 		const prisma = c.get("prisma");
 		const user = c.get("user");
 		const { roomId } = c.req.param();
@@ -244,7 +258,7 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 		if (!room) {
 			return c.json({ error: "Room not found" }, 404);
 		}
-		if (!room.users.some((id) => id === user?.id)) {
+		if (!room.users.includes(user.id)) {
 			return c.json({ error: "Unauthorized" }, 403);
 		}
 		const roomSecret = await prisma.roomSecret.findUnique({
@@ -256,10 +270,21 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 		return c.json(roomSecret);
 	})
 	.get("/games/:id/ws", authMiddleware, async (c) => {
-		const gameId = c.req.param("id");
+		const roomId = c.req.param("id");
 		const user = c.get("user");
+		const prisma = c.get("prisma");
 
-		const id = c.env.MAGIC.idFromName(gameId);
+		const room = await prisma.room.findUnique({
+			where: { id: roomId },
+		});
+		if (!room) {
+			return c.json({ error: "Room not found" }, 404);
+		}
+		if (!room.users.includes(user.id)) {
+			return c.json({ error: "Unauthorized" }, 403);
+		}
+
+		const id = c.env.MAGIC.idFromName(roomId);
 		const stub = c.env.MAGIC.get(id);
 
 		const url = new URL(c.req.url);

@@ -8,10 +8,47 @@ import { client } from "~/lib/client";
 
 export async function loader({ request }: LoaderFunctionArgs) {
 	const url = new URL(request.url);
+	const pathname = url.pathname;
+	const cookie = request.headers.get("cookie");
+
+	const roomMatch = pathname.match(/^\/logic-puzzle\/room\/([^/]+)/);
+
+	if (roomMatch) {
+		const roomId = roomMatch[1];
+		if (!cookie) {
+			return redirect("/logic-puzzle/lobby");
+		}
+
+		const [userRes, roomRes, roomSecretRes] = await Promise.all([
+			client.api.users.me.$get({}, { headers: { cookie } }),
+			client.api.rooms[":roomId"].$get({ param: { roomId } }),
+			client.api.rooms[":roomId"].secret.$get(
+				{
+					param: { roomId },
+				},
+				{
+					headers: { cookie },
+				},
+			),
+		]);
+
+		if (!userRes.ok || !roomRes.ok || !roomSecretRes.ok) {
+			return redirect("/logic-puzzle/lobby");
+		}
+
+		const user = await userRes.json();
+		const roomData = await roomRes.json();
+		const roomSecretData = await roomSecretRes.json();
+
+		if (!roomData.users.includes(user.id)) {
+			return redirect("/logic-puzzle/lobby");
+		}
+
+		return { user, secret: roomSecretData.secret, hostId: roomData.hostId };
+	}
 
 	if (url.pathname === "/logic-puzzle/lobby") {
 		try {
-			const cookie = request.headers.get("cookie");
 			if (!cookie) return null;
 
 			const res = await client.api.users.me.$get({}, { headers: { cookie } });
@@ -23,25 +60,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
 		}
 	}
 
-	try {
-		const cookie = request.headers.get("cookie");
-
-		if (!cookie) {
-			return redirect("/logic-puzzle/lobby");
-		}
-
-		const res = await client.api.users.me.$get({}, { headers: { cookie } });
-
-		if (!res.ok) {
-			return redirect("/logic-puzzle/lobby");
-		}
-
-		const user = await res.json();
-		return user;
-	} catch (error) {
-		console.error("Error in loader:", error);
-		return redirect("/logic-puzzle/lobby");
-	}
+	throw new Error("Invalid route");
 }
 
 export function HydrateFallback() {
@@ -53,7 +72,7 @@ export function HydrateFallback() {
 }
 
 export default function LogicPuzzleLayout() {
-	const user = useLoaderData<typeof loader>();
+	const context = useLoaderData<typeof loader>();
 
-	return <Outlet context={user} />;
+	return <Outlet context={context} />;
 }

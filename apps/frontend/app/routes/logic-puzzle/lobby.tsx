@@ -187,7 +187,7 @@ export default function Lobby() {
 											type="button"
 											onClick={() => handleJoinRoom(room.id)}
 										>
-											Join
+											Join without Secret
 										</button>
 									</div>
 								</div>

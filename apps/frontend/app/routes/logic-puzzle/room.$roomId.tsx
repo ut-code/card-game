@@ -11,34 +11,6 @@ import type {
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useOutletContext, useParams } from "react-router";
 import { client } from "../../lib/client";
-import type { Route } from "./+types/room.$roomId";
-
-export async function clientLoader({ params }: Route.ClientLoaderArgs) {
-	const { roomId } = params;
-	if (!roomId) {
-		throw new Response("Room ID not found", { status: 404 });
-	}
-	const roomSecret = await client.api.rooms[":roomId"].secret.$get({
-		param: { roomId },
-	});
-
-	if (!roomSecret.ok) {
-		throw new Response("Failed to fetch room secret", {
-			status: roomSecret.status,
-		});
-	}
-
-	const roomSecretData = await roomSecret.json();
-
-	const room = await client.api.rooms[":roomId"].$get({ param: { roomId } });
-	if (!room.ok) {
-		throw new Response("Failed to fetch room", { status: room.status });
-	}
-
-	const roomData = await room.json();
-
-	return { secret: roomSecretData.secret, hostId: roomData.hostId };
-}
 
 // --- Game Components ---
 
@@ -196,9 +168,19 @@ function TurnDisplay({
 	);
 }
 
-export default function RoomPage({ loaderData }: Route.ComponentProps) {
-	const { secret: roomSecret, hostId: roomHost } = loaderData;
-	const user = useOutletContext<User | null>();
+export default function RoomPage() {
+	// const { secret: roomSecret, hostId: roomHost } = loaderData;
+	const context = useOutletContext<{
+		user: User;
+		secret: string;
+		hostId: string;
+	} | null>();
+	if (!context) {
+		throw new Error("Context is null");
+	}
+
+	const { user, secret: roomSecret, hostId: roomHost } = context;
+
 	const { roomId } = useParams();
 	const navigate = useNavigate();
 
@@ -330,7 +312,12 @@ export default function RoomPage({ loaderData }: Route.ComponentProps) {
 		);
 	}
 
-	if (!gameState || !currentPlayerId) {
+	if (!gameState) {
+		console.log(
+			"Loading or waiting for game state...",
+			gameState,
+			currentPlayerId,
+		);
 		return (
 			<div className="flex items-center justify-center min-h-screen">
 				<div className="loading loading-spinner loading-lg" />
@@ -550,6 +537,9 @@ export default function RoomPage({ loaderData }: Route.ComponentProps) {
 	}
 
 	if (myStatus === "playing") {
+		if (!currentPlayerId) {
+			throw new Error("Current player ID is missing");
+		}
 		return (
 			<div className="p-4 md:p-8 flex flex-col gap-4">
 				{/* Opponent's Info */}
@@ -625,7 +615,7 @@ export default function RoomPage({ loaderData }: Route.ComponentProps) {
 		);
 	}
 
-	if (myStatus === null && !(currentPlayerId in gameState.players)) {
+	if (myStatus === null && !(user.id in gameState.players)) {
 		console.log("leaved");
 		return (
 			<div className="flex items-center justify-center min-h-screen">
