@@ -7,7 +7,14 @@ import { cors } from "hono/cors";
 import { createMiddleware } from "hono/factory";
 import { Pool } from "pg";
 import { PrismaClient } from "./generated/prisma";
-import { type GameState, Magic, type MoveAction } from "./magic";
+import {
+	type GameState,
+	Magic,
+	type MessageType,
+	type MoveAction,
+	type Operation,
+	type Rule,
+} from "./magic";
 import { Matching } from "./matching";
 
 type Bindings = {
@@ -288,5 +295,5 @@ function generateRandomString(length: number, charset?: string): string {
 export type AppType = typeof app;
 export default app;
 
-export type { GameState, MoveAction };
+export type { GameState, MoveAction, MessageType, Rule, Operation };
 export { Magic, Matching };
