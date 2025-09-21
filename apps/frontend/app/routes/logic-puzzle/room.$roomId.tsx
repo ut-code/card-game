@@ -238,14 +238,6 @@ export default function RoomPage() {
 		};
 	}, [roomId, user?.id, user?.name]);
 
-	// Redirect if user is no longer in the room
-	useEffect(() => {
-		if (gameState && user && !gameState.players.includes(user.id)) {
-			console.log("User not in game state players, navigating to lobby.");
-			navigate("/logic-puzzle/lobby");
-		}
-	}, [gameState, user, navigate]);
-
 	function sendWsMessage({ type, payload }: MessageType): void {
 		if (ws.current?.readyState === WebSocket.OPEN) {
 			const message = JSON.stringify({ type, payload });
@@ -255,7 +247,6 @@ export default function RoomPage() {
 	}
 	const handleCellClick = (x: number, y: number) => {
 		if (!gameState || !user || !user.id || selectedNumIndex === null) return;
-		// TODO: 正しいoperationとnumをいれる
 		sendWsMessage({
 			type: "makeMove",
 			payload: {
@@ -345,7 +336,7 @@ export default function RoomPage() {
 						>
 							<span className="font-medium">{gameState.names[playerId]}</span>
 							<span
-								className={`rounded-full px-3 py-1 text-sm font-semibold ${myStatus === "ready" ? "bg-green-500 text-white" : "bg-gray-300 text-gray-700"}`}
+								className={`rounded-full px-3 py-1 text-sm font-semibold ${gameState.playerStatus[playerId] === "ready" ? "bg-green-500 text-white" : "bg-gray-300 text-gray-700"}`}
 							>
 								{gameState.playerStatus[playerId] === "ready"
 									? "Ready!"
