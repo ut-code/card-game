@@ -17,6 +17,14 @@ export default function Lobby() {
 	const [roomSecret, setRoomSecret] = useState("");
 	const [joinError, setJoinError] = useState<string | null>(null);
 	const navigate = useNavigate();
+	const [step, setStep] = useState(0);
+
+	const instructions = [
+		"盤上に数字を置いていき、自分のミッションを誰よりも早く達成することを狙うゲームです。",
+		"自分の番になったら、手札から数字を選び、次に「+」(加算)、「-」(減算)のいずれかを選びます。(パスも可)",
+		"盤上のマス目を選択すると、選んだカードの数字が加算/減算され、ターンが終了します。",
+		"制限時間を過ぎると強制的にパスになるので注意！",
+	];
 
 	useEffect(() => {
 		const fetchUser = async () => {
@@ -182,7 +190,66 @@ export default function Lobby() {
 						</div>
 					</div>
 				</div>
-
+				<button
+					type="submit"
+					className="btn btn-primary"
+					onClick={() => {
+						setStep(0);
+						(
+							document.getElementById("my_modal_4") as HTMLDialogElement
+						).showModal();
+					}}
+				>
+					How to play
+				</button>
+				<dialog id="my_modal_4" className="modal">
+					<div className="modal-box flex h-5/6 w-4/5 max-w-5xl flex-col">
+						<form method="dialog">
+							<button
+								type="submit"
+								className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
+							>
+								✕
+							</button>
+						</form>
+						<h3 className="font-bold text-lg">
+							How to play ({step + 1} / {instructions.length})
+						</h3>
+						<img
+							src="/how-to-play.jpeg"
+							className="w-7/8 object-contain m-auto h-2/3"
+							alt={`How to play - step ${step + 1}`}
+						/>
+						<div className="flex-1 overflow-y-auto py-4">
+							<p>{instructions[step]}</p>
+						</div>
+						<div className="modal-action justify-between mt-4">
+							<button
+								type="submit"
+								className="btn"
+								onClick={() => setStep(step - 1)}
+								disabled={step === 0}
+							>
+								{"< Back"}
+							</button>
+							{step < instructions.length - 1 ? (
+								<button
+									type="submit"
+									className="btn btn-primary"
+									onClick={() => setStep(step + 1)}
+								>
+									{"Next >"}
+								</button>
+							) : (
+								<form method="dialog">
+									<button type="submit" className="btn btn-secondary">
+										✕ Close
+									</button>
+								</form>
+							)}
+						</div>
+					</div>
+				</dialog>
 				<div>
 					<h2 className="text-2xl font-bold mb-4">Available Rooms</h2>
 					<div className="space-y-4">
