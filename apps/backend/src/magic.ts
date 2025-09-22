@@ -1,6 +1,13 @@
 import { DurableObject } from "cloudflare:workers";
 import { type Mission, missions } from "./mission";
 
+// 定数
+const DEFAULT_BOARD_SIZE = 3;
+const DEFAULT_TIME_LIMIT_MS = 10000;
+// timeout
+let timeout: NodeJS.Timeout;
+
+// 型
 export type MoveAction = {
 	x: number;
 	y: number;
@@ -9,17 +16,24 @@ export type MoveAction = {
 	numIndex: number;
 };
 
+export type Rule =
+	| { rule: "negativeDisabled"; state: boolean }
+	| { rule: "boardSize"; state: number }
+	| { rule: "timeLimit"; state: number };
+
 export type Operation = "add" | "sub";
 
 export type GameState = {
 	players: string[];
+	playerStatus: {
+		[playerId: string]: "preparing" | "ready" | "playing";
+	};
 	names: {
 		[playerId: string]: string;
 	};
 	round: number; // 0-indexed
 	turn: number; // 0 ~ players.length-1 players[turn]'s turn
 	board: (number | null)[][];
-	boardSize: number;
 	winners: string[] | null;
 	winnersAry: {
 		[playerId: string]: (true | false)[][];
@@ -34,7 +48,20 @@ export type GameState = {
 			mission: Mission;
 		};
 	};
+	status: "loading" | "ok" | "one player";
+	rules: {
+		negativeDisabled: boolean;
+		boardSize: number;
+		timeLimit: number;
+	};
+	timeLimitUnix: number;
 };
+
+export type MessageType =
+	| { type: "makeMove"; payload: MoveAction }
+	| { type: "setReady"; payload?: undefined }
+	| { type: "changeRule"; payload: Rule }
+	| { type: "pass"; payload?: undefined };
 
 interface Session {
 	ws: WebSocket;
@@ -86,13 +113,9 @@ export class Magic extends DurableObject {
 
 		ws.addEventListener("message", async (msg) => {
 			try {
-				// TODO: 型をつける
-				const { type, payload } = JSON.parse(msg.data as string);
-
+				// TODO: 型をつける ✅
+				const { type, payload } = JSON.parse(msg.data as string) as MessageType;
 				switch (type) {
-					case "initialize":
-						await this.initialize(payload?.boardSize);
-						break;
 					case "makeMove":
 						await this.makeMove(
 							playerId,
@@ -103,6 +126,15 @@ export class Magic extends DurableObject {
 							payload.numIndex,
 						);
 						break;
+					case "setReady":
+						await this.setReady(playerId);
+						break;
+					case "changeRule":
+						await this.changeRule(payload);
+						break;
+					case "pass":
+						await this.pass();
+						break;
 				}
 			} catch {
 				ws.send(JSON.stringify({ error: "Invalid message" }));
@@ -111,8 +143,8 @@ export class Magic extends DurableObject {
 
 		const closeOrErrorHandler = () => {
 			this.sessions = this.sessions.filter((s) => s !== session);
-			// Optional: remove player from game state on disconnect
-			// this.removePlayer(playerId);
+			// remove player from game state on disconnect
+			this.removePlayer(playerId);
 		};
 		ws.addEventListener("close", closeOrErrorHandler);
 		ws.addEventListener("error", closeOrErrorHandler);
@@ -134,21 +166,28 @@ export class Magic extends DurableObject {
 
 	// --- Game Logic Methods ---
 
-	async initialize(boardSize = 3) {
+	async initialize() {
 		this.gameState = {
 			players: [],
+			playerStatus: {},
 			names: {},
 			round: 0,
 			turn: 0,
-			board: Array(boardSize)
+			board: Array(DEFAULT_BOARD_SIZE)
 				.fill(null)
-				.map(() => Array(boardSize).fill(null)),
-			boardSize: boardSize,
+				.map(() => Array(DEFAULT_BOARD_SIZE).fill(null)),
 			winners: null,
 			winnersAry: {},
 			gameId: this.ctx.id.toString(),
 			hands: {},
 			missions: {},
+			status: "loading",
+			rules: {
+				negativeDisabled: false,
+				boardSize: DEFAULT_BOARD_SIZE,
+				timeLimit: DEFAULT_TIME_LIMIT_MS / 1000,
+			},
+			timeLimitUnix: Date.now() + DEFAULT_TIME_LIMIT_MS,
 		};
 		await this.ctx.storage.put("gameState", this.gameState);
 		this.broadcast({ type: "state", payload: this.gameState });
@@ -158,30 +197,54 @@ export class Magic extends DurableObject {
 		if (!this.gameState) {
 			await this.initialize();
 		}
-		if (
-			this.gameState &&
-			this.gameState.players.length !== 2 &&
-			!this.gameState.players.includes(playerId)
-		) {
+		if (this.gameState && !this.gameState.players.includes(playerId)) {
 			this.gameState.players.push(playerId);
 			this.gameState.names[playerId] = playerName;
+			this.gameState.playerStatus[playerId] = "preparing";
 
 			await this.ctx.storage.put("gameState", this.gameState);
 			this.broadcast({ type: "state", payload: this.gameState });
 		}
-		if (this.gameState && this.gameState.players.length === 2) {
-			this.startGame();
+	}
+
+	async removePlayer(playerId: string) {
+		if (!this.gameState) throw new Error("Game state is not initialized");
+		this.gameState.players = this.gameState.players.filter(
+			(player) => player !== playerId,
+		);
+		delete this.gameState.names[playerId];
+		delete this.gameState.hands[playerId];
+		delete this.gameState.missions[playerId];
+		if (this.gameState.players.length === 1) {
+			this.gameState.status = "one player";
 		}
 	}
 
 	async startGame() {
-		if (!this.gameState) return;
+		if (
+			!this.gameState ||
+			this.gameState.status === "ok" ||
+			this.gameState.status === "one player"
+		)
+			return;
 
+		this.gameState.status = "ok";
+		this.gameState.players.forEach((id) => {
+			if (this.gameState) this.gameState.playerStatus[id] = "playing";
+		});
 		// Initialize player hands and missions
 		for (const playerId of this.gameState.players) {
-			this.gameState.hands[playerId] = this.drawInitialHand();
-			this.gameState.missions[playerId] = this.getRandomMission();
+			if (!this.gameState.hands[playerId])
+				this.gameState.hands[playerId] = this.drawInitialHand();
+			if (!this.gameState.missions[playerId])
+				this.gameState.missions[playerId] = this.getRandomMission();
 		}
+		this.gameState.timeLimitUnix =
+			Date.now() + this.gameState.rules.timeLimit * 1000;
+		clearTimeout(timeout);
+		timeout = setTimeout(() => {
+			this.pass();
+		}, this.gameState.rules.timeLimit * 1000);
 
 		await this.ctx.storage.put("gameState", this.gameState);
 		this.broadcast({ type: "state", payload: this.gameState });
@@ -265,7 +328,62 @@ export class Magic extends DurableObject {
 				console.log("this.gameState.winnersAry", this.gameState.winnersAry);
 			}
 		}
+		this.gameState.timeLimitUnix =
+			Date.now() + this.gameState.rules.timeLimit * 1000;
+		clearTimeout(timeout);
+		if (!this.gameState.winners)
+			timeout = setTimeout(() => {
+				this.pass();
+			}, this.gameState.rules.timeLimit * 1000);
+		await this.ctx.storage.put("gameState", this.gameState);
+		this.broadcast({ type: "state", payload: this.gameState });
+	}
+	async setReady(player: string) {
+		if (!this.gameState) return;
+		this.gameState.playerStatus[player] = "ready";
+		if (
+			this.gameState.players.length >= 2 &&
+			this.gameState.players.every(
+				(p) => this.gameState?.playerStatus[p] === "ready",
+			)
+		) {
+			this.startGame();
+		} else {
+			await this.ctx.storage.put("gameState", this.gameState);
+			this.broadcast({ type: "state", payload: this.gameState });
+		}
+	}
 
+	async changeRule(payload: Rule) {
+		if (!this.gameState) return;
+		if (payload.rule === "negativeDisabled") {
+			this.gameState.rules.negativeDisabled = payload.state;
+		} else if (payload.rule === "boardSize") {
+			this.gameState.rules.boardSize = payload.state;
+			this.gameState.board = Array(payload.state)
+				.fill(null)
+				.map(() => Array(payload.state).fill(null));
+		} else if (payload.rule === "timeLimit") {
+			this.gameState.rules.timeLimit = payload.state;
+		}
+		console.log(this.gameState.rules);
+		await this.ctx.storage.put("gameState", this.gameState);
+		this.broadcast({ type: "state", payload: this.gameState });
+	}
+
+	async pass() {
+		if (!this.gameState) return;
+		if (this.gameState.turn === this.gameState.players.length - 1) {
+			this.gameState.round += 1;
+		}
+		this.gameState.turn =
+			(this.gameState.turn + 1) % this.gameState.players.length;
+		this.gameState.timeLimitUnix =
+			Date.now() + this.gameState.rules.timeLimit * 1000;
+		clearTimeout(timeout);
+		timeout = setTimeout(() => {
+			this.pass();
+		}, this.gameState.rules.timeLimit * 1000);
 		await this.ctx.storage.put("gameState", this.gameState);
 		this.broadcast({ type: "state", payload: this.gameState });
 	}
@@ -317,7 +435,9 @@ export class Magic extends DurableObject {
 			case "add":
 				return prev + num;
 			case "sub":
-				return prev - num;
+				return num > prev && this.gameState.rules.negativeDisabled
+					? num - prev
+					: prev - num;
 			default:
 				return operation satisfies never;
 		}
@@ -325,29 +445,29 @@ export class Magic extends DurableObject {
 
 	isVictory(mission: Mission) {
 		if (!this.gameState) throw new Error("Game state is not initialized");
-		const matrix = Array.from({ length: this.gameState.boardSize }, () =>
-			Array(this.gameState?.boardSize).fill(false),
+		const matrix = Array.from({ length: this.gameState.rules.boardSize }, () =>
+			Array(this.gameState?.rules.boardSize).fill(false),
 		);
 		if (mission.target === "column" || mission.target === "allDirection") {
-			for (let i = 0; i < this.gameState.boardSize; i++) {
+			for (let i = 0; i < this.gameState.rules.boardSize; i++) {
 				const columnary = this.gameState.board[i].filter(
 					(value) => value !== null,
 				);
 				if (this.isWinner(columnary, mission)) {
-					matrix[i] = Array(this.gameState.boardSize).fill(true);
+					matrix[i] = Array(this.gameState.rules.boardSize).fill(true);
 				}
 			}
 		}
 
 		if (mission.target === "row" || mission.target === "allDirection") {
-			for (let i = 0; i < this.gameState.boardSize; i++) {
+			for (let i = 0; i < this.gameState.rules.boardSize; i++) {
 				const nullinary = [];
-				for (let j = 0; j < this.gameState.boardSize; j++) {
+				for (let j = 0; j < this.gameState.rules.boardSize; j++) {
 					nullinary.push(this.gameState.board[j][i]);
 				}
 				const rowary = nullinary.filter((value) => value !== null);
 				if (this.isWinner(rowary, mission)) {
-					for (let j = 0; j < this.gameState.boardSize; j++) {
+					for (let j = 0; j < this.gameState.rules.boardSize; j++) {
 						matrix[j][i] = true;
 					}
 				}
@@ -357,10 +477,10 @@ export class Magic extends DurableObject {
 		if (mission.target === "diagonal" || mission.target === "allDirection") {
 			for (let i = 0; i < 2; i++) {
 				const nullinary = [];
-				for (let j = 0; j < this.gameState.boardSize; j++) {
+				for (let j = 0; j < this.gameState.rules.boardSize; j++) {
 					if (i === 0) {
 						nullinary.push(
-							this.gameState.board[j][this.gameState.boardSize - j - 1],
+							this.gameState.board[j][this.gameState.rules.boardSize - j - 1],
 						);
 					} else {
 						nullinary.push(this.gameState.board[j][j]);
@@ -368,9 +488,9 @@ export class Magic extends DurableObject {
 				}
 				const diaary = nullinary.filter((value) => value !== null);
 				if (this.isWinner(diaary, mission)) {
-					for (let j = 0; j < this.gameState.boardSize; j++) {
+					for (let j = 0; j < this.gameState.rules.boardSize; j++) {
 						if (i === 0) {
-							matrix[j][this.gameState.boardSize - j - 1] = true;
+							matrix[j][this.gameState.rules.boardSize - j - 1] = true;
 						} else {
 							matrix[j][j] = true;
 						}
@@ -381,8 +501,8 @@ export class Magic extends DurableObject {
 
 		if (mission.target === "allCell") {
 			const nullinary = [];
-			for (let i = 0; i < this.gameState.boardSize; i++) {
-				for (let j = 0; j < this.gameState.boardSize; j++) {
+			for (let i = 0; i < this.gameState.rules.boardSize; i++) {
+				for (let j = 0; j < this.gameState.rules.boardSize; j++) {
 					nullinary.push(this.gameState.board[i][j]);
 				}
 			}
@@ -431,10 +551,10 @@ export class Magic extends DurableObject {
 
 	isWinner(obary: number[], mission: Mission) {
 		if (!this.gameState) throw new Error("Game state is not initialized");
-		if (obary.length === this.gameState.boardSize) {
+		if (obary.length === this.gameState.rules.boardSize) {
 			if (mission.type === "sum") {
 				let hikaku = 0;
-				for (let j = 0; j < this.gameState.boardSize; j++) {
+				for (let j = 0; j < this.gameState.rules.boardSize; j++) {
 					hikaku += obary[j];
 				}
 				if (hikaku === mission.number) {
@@ -443,7 +563,7 @@ export class Magic extends DurableObject {
 			}
 			if (mission.type === "multipile") {
 				let hikaku = 0;
-				for (let j = 0; j < this.gameState.boardSize; j++) {
+				for (let j = 0; j < this.gameState.rules.boardSize; j++) {
 					hikaku += obary[j] % mission.number;
 				}
 				if (hikaku === 0) {
@@ -453,35 +573,35 @@ export class Magic extends DurableObject {
 			if (mission.type === "arithmetic") {
 				obary.sort((first, second) => first - second);
 				let hikaku = 0;
-				for (let j = 1; j < this.gameState.boardSize; j++) {
+				for (let j = 1; j < this.gameState.rules.boardSize; j++) {
 					if (obary[j] - obary[j - 1] === mission.number) {
 						hikaku += 1;
 					}
 				}
-				if (hikaku === this.gameState.boardSize - 1) {
+				if (hikaku === this.gameState.rules.boardSize - 1) {
 					return true;
 				}
 			}
 			if (mission.type === "geometic") {
 				obary.sort((first, second) => first - second);
 				let hikaku = 0;
-				for (let j = 1; j < this.gameState.boardSize; j++) {
+				for (let j = 1; j < this.gameState.rules.boardSize; j++) {
 					if (obary[j] === obary[j - 1] * mission.number) {
 						hikaku += 1;
 					}
 				}
-				if (hikaku === this.gameState.boardSize - 1) {
+				if (hikaku === this.gameState.rules.boardSize - 1) {
 					return true;
 				}
 			}
 			if (mission.type === "prime") {
 				let hikaku = 0;
-				for (let j = 0; j < this.gameState.boardSize; j++) {
+				for (let j = 0; j < this.gameState.rules.boardSize; j++) {
 					if (this.prime(obary[j])) {
 						hikaku += 1;
 					}
 				}
-				if (hikaku === this.gameState.boardSize) {
+				if (hikaku === this.gameState.rules.boardSize) {
 					return true;
 				}
 			}
