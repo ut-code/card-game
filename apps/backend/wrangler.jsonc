@@ -1,7 +1,7 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "backend",
-	"main": "src/index.ts",
+	"name": "card-game-portal",
+	"main": "src/worker.ts",
 	"compatibility_date": "2025-08-06",
 	"compatibility_flags": ["nodejs_compat"],
 	"durable_objects": {
@@ -15,7 +15,7 @@
 	"migrations": [
 		{
 			"tag": "v1",
-			"new_classes": ["Magic"]
+			"new_sqlite_classes": ["Magic"]
 		}
 	]
 	// "vars": {

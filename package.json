@@ -22,7 +22,9 @@
 		"check": "bunx --bun biome check .",
 		"check:format": "bunx --bun biome format .",
 		"check:lint": "bunx --bun biome lint .",
-		"check:type": "tsc --noEmit"
+		"check:type": "tsc --noEmit",
+		"build": "cd ./apps/frontend && bun run build",
+		"deploy": "cd ./apps/backend && bun run deploy"
 	},
 	"type": "module",
 	"workspaces": [
