@@ -20,9 +20,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
 		}
 
 		const [userRes, roomRes, roomSecretRes] = await Promise.all([
-			client.api.users.me.$get({}, { headers: { cookie } }),
-			client.api.rooms[":roomId"].$get({ param: { roomId } }),
-			client.api.rooms[":roomId"].secret.$get(
+			client.users.me.$get({}, { headers: { cookie } }),
+			client.rooms[":roomId"].$get({ param: { roomId } }),
+			client.rooms[":roomId"].secret.$get(
 				{
 					param: { roomId },
 				},
@@ -51,7 +51,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
 		try {
 			if (!cookie) return null;
 
-			const res = await client.api.users.me.$get({}, { headers: { cookie } });
+			const res = await client.users.me.$get({}, { headers: { cookie } });
 			if (!res.ok) return null;
 
 			return await res.json();

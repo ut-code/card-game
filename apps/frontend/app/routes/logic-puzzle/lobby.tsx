@@ -11,7 +11,7 @@ type Room = {
 
 export default function Lobby() {
 	const me = useOutletContext<User | null>();
-	const [user, setUser] = useState<User | { error: string } | null>(me ?? null);
+	const [user, setUser] = useState<User | null>(me ?? null);
 	const [userName, setUserName] = useState("");
 	const [rooms, setRooms] = useState<Room[]>([]);
 	const [newRoomName, setNewRoomName] = useState("");
@@ -36,7 +36,8 @@ export default function Lobby() {
 			json: { name: userName },
 		});
 		const data = await res.json();
-		setUser(data);
+		const createdAt = data.createdAt ? new Date(data.createdAt) : null;
+		setUser({ ...data, createdAt });
 	};
 
 	const handleCreateRoom = async () => {
@@ -69,8 +70,6 @@ export default function Lobby() {
 		const data = await res.json();
 		if (res.ok && "id" in data) {
 			navigate(`/logic-puzzle/room/${data.id}`);
-		} else if ("error" in data) {
-			setJoinError(data.error);
 		} else {
 			setJoinError("Failed to join room");
 		}
@@ -80,13 +79,13 @@ export default function Lobby() {
 		return (
 			<div className="p-8 flex flex-col items-center">
 				<h1 className="text-2xl font-bold mb-4">Create User</h1>
-				{user && "error" in user && (
+				{/* {user && "error" in user && (
 					<div className="alert alert-error shadow-lg mb-4">
 						<div>
 							<span>{user.error}</span>
 						</div>
 					</div>
-				)}
+				)} */}
 				<div className="card w-96 bg-base-100 shadow-xl">
 					<div className="card-body">
 						<input

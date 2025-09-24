@@ -11,6 +11,7 @@ import type {
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useOutletContext, useParams } from "react-router";
 import { client } from "../../lib/client";
+import { API_HOST } from "../../lib/env";
 
 // --- Game Components ---
 
@@ -205,9 +206,8 @@ export default function RoomPage() {
 		if (!roomId || !user?.id || !user?.name) return;
 
 		const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-		// TODO: This should be configurable via environment variables
-		const host = "localhost:8787";
-		const wsUrl = `${proto}//${host}/api/games/${roomId}/ws?playerId=${user.id}&playerName=${user.name}`;
+
+		const wsUrl = `${proto}//${API_HOST}/games/${roomId}/ws?playerId=${user.id}&playerName=${user.name}`;
 
 		const socket = new WebSocket(wsUrl);
 		ws.current = socket;
@@ -237,7 +237,6 @@ export default function RoomPage() {
 			socket.close();
 		};
 	}, [roomId, user?.id, user?.name]);
-
 	function sendWsMessage({ type, payload }: MessageType): void {
 		if (ws.current?.readyState === WebSocket.OPEN) {
 			const message = JSON.stringify({ type, payload });

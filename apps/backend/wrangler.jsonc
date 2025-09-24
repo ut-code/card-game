@@ -17,7 +17,7 @@
 			"tag": "v1",
 			"new_sqlite_classes": ["Magic"]
 		}
-	]
+	],
 	// "vars": {
 	//   "MY_VAR": "my-variable"
 	// },
@@ -33,13 +33,13 @@
 	//     "bucket_name": "my-bucket"
 	//   }
 	// ],
-	// "d1_databases": [
-	//   {
-	//     "binding": "MY_DB",
-	//     "database_name": "my-database",
-	//     "database_id": ""
-	//   }
-	// ],
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "card_game",
+			"database_id": "aab06b42-8516-4b8f-b00c-cbd0ea541f1a"
+		}
+	]
 	// "ai": {
 	//   "binding": "AI"
 	// },
