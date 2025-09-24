@@ -1,11 +1,12 @@
 import { randomInt } from "node:crypto";
+import { text } from "node:stream/consumers";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Hono } from "hono";
 import { getSignedCookie, setSignedCookie } from "hono/cookie";
 import { cors } from "hono/cors";
 import { createMiddleware } from "hono/factory";
 import { Pool } from "pg";
-import { PrismaClient } from "./generated/prisma";
+import { PrismaClient } from "./generated/prisma/client";
 import {
 	type GameState,
 	Magic,
@@ -14,9 +15,11 @@ import {
 	type Operation,
 	type Rule,
 } from "./magic";
+import { Matching } from "./matching";
 
 type Bindings = {
 	MAGIC: DurableObjectNamespace;
+	MATCHING: DurableObjectNamespace;
 	DATABASE_URL: string;
 };
 
@@ -233,6 +236,34 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 		return c.json({ message: "Left room successfully" });
 	})
 
+	.post("/matching/create", authMiddleware, async (c) => {
+		const prisma = c.get("prisma");
+
+		const { members } = await c.req.json<{ members: string[] }>();
+		if (!members) {
+			return c.json({ error: "Member is requirecd" }, 400);
+		}
+		const roomName = generateRandomString(8);
+		const secret = randomInt(100000, 999999).toString();
+
+		const room = await prisma.room.create({
+			data: {
+				name: roomName,
+				hostId: members[0],
+				users: members,
+			},
+		});
+
+		await prisma.roomSecret.create({
+			data: {
+				roomId: room.id,
+				secret,
+			},
+		});
+
+		return c.json(room, 201);
+	})
+
 	.get("/games/:id/ws", authMiddleware, async (c) => {
 		const gameId = c.req.param("id");
 		const user = c.get("user");
@@ -245,10 +276,35 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
 		const request = new Request(url.toString(), c.req.raw);
 		return stub.fetch(request);
+	})
+
+	.get("/matching/ws", authMiddleware, async (c) => {
+		const user = c.get("user");
+
+		const id = c.env.MATCHING.idFromName("matching");
+		const stub = c.env.MATCHING.get(id);
+
+		const url = new URL(c.req.url);
+		url.searchParams.set("playerId", user.id);
+
+		const request = new Request(url.toString(), c.req.raw);
+		return stub.fetch(request);
 	});
+
+function generateRandomString(length: number, charset?: string): string {
+	const defaultCharset =
+		"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+	const chars = charset || defaultCharset;
+	let result = "";
+	for (let i = 0; i < length; i++) {
+		const randomIndex = Math.floor(Math.random() * chars.length);
+		result += chars[randomIndex];
+	}
+	return result;
+}
 
 export type AppType = typeof app;
 export default app;
 
 export type { GameState, MoveAction, MessageType, Rule, Operation };
-export { Magic };
+export { Magic, Matching };

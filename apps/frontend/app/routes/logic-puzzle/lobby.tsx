@@ -137,6 +137,18 @@ export default function Lobby() {
 			<div className="grid grid-cols-1 md:grid-cols-2 gap-8">
 				<div className="space-y-8">
 					<div>
+						<h2 className="text-2xl font-bold mb-4">Random Match</h2>
+						<div className="card bg-base-100 shadow-xl">
+							<div className="card-body">
+								<div className="card-actions justify-end mt-4">
+									<a href="/logic-puzzle/matching" className="btn btn-primary">
+										Go!
+									</a>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div>
 						<h2 className="text-2xl font-bold mb-4">Create a Room</h2>
 						<div className="card bg-base-100 shadow-xl">
 							<div className="card-body">

@@ -9,6 +9,10 @@
 			{
 				"name": "MAGIC",
 				"class_name": "Magic"
+			},
+			{
+				"name": "MATCHING",
+				"class_name": "Matching"
 			}
 		]
 	},
