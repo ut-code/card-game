@@ -1,7 +1,7 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "card-game-portal",
-	"main": "src/worker.ts",
+	"main": "src/index.ts",
 	"compatibility_date": "2025-08-06",
 	"compatibility_flags": ["nodejs_compat"],
 	"durable_objects": {

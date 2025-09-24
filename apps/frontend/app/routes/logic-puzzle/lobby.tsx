@@ -21,7 +21,7 @@ export default function Lobby() {
 
 	useEffect(() => {
 		const fetchRooms = async () => {
-			const res = await client.api.rooms.$get();
+			const res = await client.rooms.$get();
 			if (res.ok) {
 				const data = await res.json();
 				setRooms(data);
@@ -32,7 +32,7 @@ export default function Lobby() {
 
 	const handleCreateUser = async () => {
 		if (!userName) return;
-		const res = await client.api.users.create.$post({
+		const res = await client.users.create.$post({
 			json: { name: userName },
 		});
 		const data = await res.json();
@@ -41,7 +41,7 @@ export default function Lobby() {
 
 	const handleCreateRoom = async () => {
 		if (!newRoomName) return;
-		const res = await client.api.rooms.create.$post({
+		const res = await client.rooms.create.$post({
 			json: { name: newRoomName },
 		});
 		if (res.ok) {
@@ -52,7 +52,7 @@ export default function Lobby() {
 	};
 
 	const handleJoinRoom = async (roomId: string) => {
-		const res = await client.api.rooms[":roomId"].join.$post({
+		const res = await client.rooms[":roomId"].join.$post({
 			param: { roomId },
 		});
 		if (res.ok) {
@@ -63,7 +63,7 @@ export default function Lobby() {
 	const handleJoinWithSecret = async () => {
 		if (!roomSecret) return;
 		setJoinError(null);
-		const res = await client.api.rooms.join.$post({
+		const res = await client.rooms.join.$post({
 			json: { secret: roomSecret },
 		});
 		const data = await res.json();

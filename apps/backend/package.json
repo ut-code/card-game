@@ -6,19 +6,18 @@
 		"dev": "wrangler dev",
 		"deploy": "wrangler deploy --minify",
 		"cf-typegen": "wrangler types --env-interface CloudflareBindings",
-		"db": "bunx prisma db push"
+		"db": "bunx prisma generate"
 	},
 	"dependencies": {
 		"@prisma/adapter-pg": "^6.15.0",
-		"@prisma/client": "^6.15.0",
-		"hono": "^4.8.12",
-		"hono-react-router-adapter": "^0.6.5",
-		"pg": "^8.16.3"
+		"@prisma/adapter-pg-worker": "^6.9.0",
+		"hono": "^4.8.12"
 	},
 	"devDependencies": {
 		"@cloudflare/workers-types": "^4.20250214.0",
+		"@prisma/client": "^6.16.2",
 		"@types/node": "^20.19.16",
-		"prisma": "^6.15.0",
+		"prisma": "^6.16.2",
 		"wrangler": "^4.4.0"
 	},
 	"exports": {

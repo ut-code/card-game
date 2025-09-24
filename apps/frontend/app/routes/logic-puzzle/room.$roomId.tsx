@@ -287,7 +287,7 @@ export default function RoomPage() {
 	const handleLeaveRoom = async () => {
 		sendWsMessage({ type: "removePlayer" });
 		if (roomId) {
-			await client.api.rooms[":roomId"].leave.$post({ param: { roomId } });
+			await client.rooms[":roomId"].leave.$post({ param: { roomId } });
 		}
 		navigate("/logic-puzzle/lobby");
 	};

@@ -4,8 +4,7 @@ import { Hono } from "hono";
 import { getSignedCookie, setSignedCookie } from "hono/cookie";
 import { cors } from "hono/cors";
 import { createMiddleware } from "hono/factory";
-import { Pool } from "pg";
-import { PrismaClient } from "./generated/prisma";
+import { PrismaClient } from "./generated/prisma/client";
 import {
 	type GameState,
 	Magic,
@@ -57,7 +56,7 @@ const authMiddleware = createMiddleware<{ Variables: Variables }>(
 	},
 );
 
-const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
+const apiApp = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 	.use(
 		"*",
 		cors({
@@ -66,13 +65,12 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 		}),
 	)
 	.use("*", async (c, next) => {
-		const pool = new Pool({ connectionString: c.env.DATABASE_URL });
-		const adapter = new PrismaPg(pool);
+		const adapter = new PrismaPg({ connectionString: c.env.DATABASE_URL });
 		const prisma = new PrismaClient({ adapter });
 		c.set("prisma", prisma);
 		await next();
 	})
-	.basePath("/api")
+	// .basePath("/api")
 
 	// User routes (remains the same)
 	.get("/users/me", authMiddleware, async (c) => {
@@ -294,8 +292,26 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 		return stub.fetch(request);
 	});
 
-export type AppType = typeof app;
-export default app;
+export type AppType = typeof apiApp;
+export default apiApp;
 
 export type { GameState, MoveAction, MessageType, Rule, Operation };
 export { Magic };
+
+// export const getApp = (
+// 	handler: (
+// 		request: Request,
+// 		env: Bindings,
+// 		ctx: ExecutionContext,
+// 	) => Promise<Response>,
+// ) => {
+// 	app.all("*", async (context) => {
+// 		return handler(
+// 			context.req.raw,
+// 			context.env,
+// 			context.executionCtx as ExecutionContext,
+// 		);
+// 	});
+
+// 	return app;
+// };
