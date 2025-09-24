@@ -6,9 +6,25 @@ export default function matching() {
 	const [userId, setUserId] = useState<string>("");
 	const [userName, setUserName] = useState<string>("");
 	const [waitingUser, setWaitingUser] = useState<string[]>([]);
+	const [roomSecret, setRoomSecret] = useState<string>("");
 	const ws = useRef<WebSocket | null>(null);
 
 	const navigate = useNavigate();
+
+	const handleJoinWithSecret = async () => {
+		if (!roomSecret) return;
+		const res = await client.api.rooms.join.$post({
+			json: { secret: roomSecret },
+		});
+		const data = await res.json();
+		if (res.ok && "id" in data) {
+			navigate(`/logic-puzzle/room/${data.id}`);
+		} else if ("error" in data) {
+			console.log(data.error);
+		} else {
+			console.log("Failed to join room");
+		}
+	};
 
 	console.log("waitingUser:", waitingUser);
 
@@ -49,6 +65,10 @@ export default function matching() {
 			if (message.type === "addUser") {
 				setWaitingUser(message.payload);
 				console.log(message.payload);
+			}
+			if (message.type === "goRoom") {
+				setRoomSecret(message.payload);
+				setWaitingUser([]);
 			}
 			if (message.error) {
 				console.error("[WS] Server error:", message.error);

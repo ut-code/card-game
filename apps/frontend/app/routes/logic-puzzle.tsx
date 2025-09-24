@@ -5,7 +5,7 @@ export default function LogicPuzzle() {
 				<div className="max-w-md">
 					<h1 className="text-5xl font-bold">Logic Puzzle</h1>
 					<p className="py-6">Coming soon...</p>
-					<a href="./lobby" className="btn btn-primary">
+					<a href="./logic-puzzle/lobby" className="btn btn-primary">
 						Go to Lobby
 					</a>
 				</div>

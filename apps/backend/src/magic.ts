@@ -516,8 +516,8 @@ export class Magic extends DurableObject {
 				}
 				if (hikaku > 3) {
 					for (let i = 0; i < nullinary.length; i++) {
-						matrix[Math.floor(i / this.gameState.boardSize)][
-							i % this.gameState.boardSize
+						matrix[Math.floor(i / this.gameState.rules.boardSize)][
+							i % this.gameState.rules.boardSize
 						] = this.multi(nullinary[i], mission.number);
 					}
 				}
@@ -531,8 +531,8 @@ export class Magic extends DurableObject {
 				}
 				if (hikaku > 3) {
 					for (let i = 0; i < nullinary.length; i++) {
-						matrix[Math.floor(i / this.gameState.boardSize)][
-							i % this.gameState.boardSize
+						matrix[Math.floor(i / this.gameState.rules.boardSize)][
+							i % this.gameState.rules.boardSize
 						] = this.prime(nullinary[i]);
 					}
 				}

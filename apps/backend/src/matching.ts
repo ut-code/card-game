@@ -1,4 +1,20 @@
 import { DurableObject } from "cloudflare:workers";
+import { randomInt } from "node:crypto";
+import { PrismaClient } from "./generated/prisma/client";
+
+const prisma = new PrismaClient();
+
+function generateRandomString(length: number, charset?: string): string {
+	const defaultCharset =
+		"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+	const chars = charset || defaultCharset;
+	let result = "";
+	for (let i = 0; i < length; i++) {
+		const randomIndex = Math.floor(Math.random() * chars.length);
+		result += chars[randomIndex];
+	}
+	return result;
+}
 
 interface Session {
 	ws: WebSocket;
@@ -61,6 +77,26 @@ export class Matching extends DurableObject {
 		});
 
 		ws.send(JSON.stringify({ type: "addUser", payload: this.waitingUser }));
+
+		if (this.waitingUser?.length === 2) {
+			const roomName = generateRandomString(6);
+			const room = await prisma.room.create({
+				data: {
+					name: roomName,
+					hostId: this.waitingUser[0],
+					users: this.waitingUser,
+				},
+			});
+			const roomSecret = await prisma.roomSecret.create({
+				data: {
+					roomId: room.id,
+					secret: randomInt(100000, 999999).toString(),
+				},
+			});
+			ws.send(JSON.stringify({ type: "goRoom", payload: roomSecret }));
+			this.waitingUser = [];
+			ws.send(JSON.stringify({ type: "addUser", payload: this.waitingUser }));
+		}
 	}
 
 	async addUser(playerId: string) {

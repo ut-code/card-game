@@ -6,7 +6,7 @@ import { getSignedCookie, setSignedCookie } from "hono/cookie";
 import { cors } from "hono/cors";
 import { createMiddleware } from "hono/factory";
 import { Pool } from "pg";
-import { PrismaClient } from "./generated/prisma";
+import { PrismaClient } from "./generated/prisma/client";
 import {
 	type GameState,
 	Magic,
