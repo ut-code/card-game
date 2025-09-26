@@ -7,9 +7,8 @@ import {
 
 export default [
 	index("routes/home.tsx"),
-	route("logic-puzzle", "routes/logic-puzzle.tsx"),
-	layout("routes/logic-puzzle/root.tsx", [
-		route("logic-puzzle/lobby", "routes/logic-puzzle/lobby.tsx"),
-		route("logic-puzzle/room/:roomId", "routes/logic-puzzle/room.$roomId.tsx"),
+	layout("routes/magic-square/layout.tsx", [
+		route("magic-square", "routes/magic-square/home.tsx"),
+		route("magic-square/room/:roomId", "routes/magic-square/room.$roomId.tsx"),
 	]),
 ] satisfies RouteConfig;

@@ -324,7 +324,7 @@ export default function RoomPage() {
 		if (roomId) {
 			await client.rooms[":roomId"].leave.$post({ param: { roomId } });
 		}
-		navigate("/logic-puzzle/lobby");
+		navigate("/magic-square/lobby");
 	};
 
 	// --- Render Logic ---
@@ -671,7 +671,7 @@ export default function RoomPage() {
 				<p className="mt-4">
 					An error occurred in the game. Please try again later.
 				</p>
-				<a href="/logic-puzzle/lobby" className="btn btn-primary mt-4">
+				<a href="/magic-square/lobby" className="btn btn-primary mt-4">
 					Go to Lobby
 				</a>
 			</div>

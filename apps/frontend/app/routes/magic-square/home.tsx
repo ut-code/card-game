@@ -65,7 +65,7 @@ export default function Lobby() {
 			param: { roomId },
 		});
 		if (res.ok) {
-			navigate(`/logic-puzzle/room/${roomId}`);
+			navigate(`/magic-square/room/${roomId}`);
 		}
 	};
 
@@ -77,7 +77,7 @@ export default function Lobby() {
 		});
 		const data = await res.json();
 		if (res.ok && "id" in data) {
-			navigate(`/logic-puzzle/room/${data.id}`);
+			navigate(`/magic-square/room/${data.id}`);
 		} else {
 			setJoinError("Failed to join room");
 		}

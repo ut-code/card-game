@@ -10,7 +10,7 @@ export async function clientLoader({ request }: ClientLoaderFunctionArgs) {
 	const url = new URL(request.url);
 	const pathname = url.pathname;
 
-	const roomMatch = pathname.match(/^\/logic-puzzle\/room\/([^/]+)/);
+	const roomMatch = pathname.match(/^\/magic-square\/room\/([^/]+)/);
 
 	if (roomMatch) {
 		const roomId = roomMatch[1];
@@ -24,7 +24,7 @@ export async function clientLoader({ request }: ClientLoaderFunctionArgs) {
 		]);
 
 		if (!userRes.ok || !roomRes.ok || !roomSecretRes.ok) {
-			return redirect("/logic-puzzle/lobby");
+			return redirect("/magic-square");
 		}
 
 		const user = await userRes.json();
@@ -32,13 +32,13 @@ export async function clientLoader({ request }: ClientLoaderFunctionArgs) {
 		const roomSecretData = await roomSecretRes.json();
 
 		if (!roomData.users.includes(user.id)) {
-			return redirect("/logic-puzzle/lobby");
+			return redirect("/magic-square");
 		}
 
 		return { user, secret: roomSecretData.secret, hostId: roomData.hostId };
 	}
 
-	if (url.pathname === "/logic-puzzle/lobby") {
+	if (url.pathname === "/magic-square") {
 		try {
 			const res = await client.users.me.$get({});
 

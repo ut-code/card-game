@@ -6,10 +6,10 @@ export default function Home() {
 					<h1 className="text-5xl font-bold mb-8">ゲームポータル</h1>
 					<div className="card w-96 bg-base-100 shadow-xl">
 						<div className="card-body">
-							<h2 className="card-title">ロジックパズル</h2>
-							<p>論理パズルのゲームです。</p>
+							<h2 className="card-title">魔法陣</h2>
+							<p>魔法陣を模したゲームです。</p>
 							<div className="card-actions justify-end">
-								<a href="/logic-puzzle" className="btn btn-primary">
+								<a href="/magic-square" className="btn btn-primary">
 									開始する
 								</a>
 							</div>
