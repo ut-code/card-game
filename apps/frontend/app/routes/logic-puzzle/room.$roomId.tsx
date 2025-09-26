@@ -1,9 +1,15 @@
 /** biome-ignore-all lint/a11y/noStaticElementInteractions: TODO */
 /** biome-ignore-all lint/suspicious/noArrayIndexKey: TODO */
 /** biome-ignore-all lint/a11y/useKeyWithClickEvents: TODO */
-import type { GameState, MessageType, Operation, Rule } from "@apps/backend";
+import type {
+	GameState,
+	MessageType,
+	Operation,
+	Rule,
+	User,
+} from "@apps/backend";
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate, useOutletContext, useParams } from "react-router";
 import { client } from "../../lib/client";
 
 // --- Game Components ---
@@ -179,18 +185,30 @@ function TurnDisplay({
 }
 
 export default function RoomPage() {
+	const context = useOutletContext<{
+		user: User;
+		secret: string;
+		hostId: string;
+	} | null>();
+	if (!context) {
+		throw new Error("Context is null");
+	}
+
+	const { user, secret: roomSecret, hostId: roomHost } = context;
+
 	const { roomId } = useParams();
 	const navigate = useNavigate();
 
-	const [userId, setUserId] = useState<string | null>(null);
-	const [userName, setUserName] = useState<string | null>(null);
 	const [gameState, setGameState] = useState<GameState | null>(null);
-	const [roomHost, setRoomHost] = useState<string | null>(null);
-	const [roomSecret, setRoomSecret] = useState<string | null>(null);
+	const myStatus = user?.id
+		? (gameState?.playerStatus[user?.id] ?? null)
+		: null;
 	const ws = useRef<WebSocket | null>(null);
 
-	const opponentIds = gameState?.players.filter((p) => p !== userId) ?? null;
-	const currentPlayerId = gameState?.players[gameState.turn];
+	const opponentIds = user
+		? (gameState?.players.filter((p) => p !== user.id) ?? null)
+		: null;
+	const currentPlayerId = gameState?.players[gameState.turn] ?? null;
 
 	const [selectedNumIndex, setSelectedNumIndex] = useState<number | null>(null);
 	const [selectedOperation, setSelectedOperation] = useState<Operation>("add");
@@ -198,55 +216,23 @@ export default function RoomPage() {
 	const [winnerDisplay, setWinnerDisplay] = useState(0);
 	const [remainingTime, setRemainingTime] = useState(0);
 
-	// Fetch user ID on component mount
-	useEffect(() => {
-		const fetchUser = async () => {
-			const res = await client.api.users.me.$get();
-			if (res.ok) {
-				const user = await res.json();
-				setUserId(user.id);
-				setUserName(user.name);
-			} else {
-				navigate("/logic-puzzle/lobby");
-			}
-		};
-		fetchUser();
-		const fetchRoom = async () => {
-			if (!roomId) return;
-			const res = await client.api.rooms[":roomId"].$get({
-				param: { roomId: roomId },
-			});
-			if (res.ok) {
-				const room = await res.json();
-				setRoomHost(room.hostId);
-			} else {
-				navigate("/logic-puzzle/lobby");
-			}
-		};
-		fetchRoom();
-		const fetchRoomSecret = async () => {
-			if (!roomId) return;
-			const res = await client.api.rooms[":roomId"].secret.$get({
-				param: { roomId: roomId },
-			});
-			if (res.ok) {
-				const roomSecret = await res.json();
-				setRoomSecret(roomSecret.secret);
-			} else {
-				navigate("/logic-puzzle/lobby");
-			}
-		};
-		fetchRoomSecret();
-	}, [navigate, roomId]);
-
 	// WebSocket connection effect
 	useEffect(() => {
-		if (!roomId || !userId || !userName) return;
+		if (!roomId || !user?.id || !user?.name) return;
 
 		const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-		// TODO: This should be configurable via environment variables
-		const host = "localhost:8787";
-		const wsUrl = `${proto}//${host}/api/games/${roomId}/ws?playerId=${userId}&playerName=${userName}`;
+
+		const host = window.location.hostname;
+		const port = window.location.port;
+		const fullHost =
+			host === "localhost" && port === "5173"
+				? "localhost:8787"
+				: port
+					? `${host}:${port}`
+					: host;
+		const prefix = host === "localhost" && port === "5173" ? "" : "/api";
+
+		const wsUrl = `${proto}//${fullHost}${prefix}/games/${roomId}/ws?playerId=${user.id}&playerName=${user.name}`;
 
 		const socket = new WebSocket(wsUrl);
 		ws.current = socket;
@@ -272,7 +258,7 @@ export default function RoomPage() {
 		};
 
 		return () => socket.close();
-	}, [roomId, userId, userName]);
+	}, [roomId, user.id, user.name]);
 
 	useEffect(() => {
 		if (gameState?.timeLimitUnix) {
@@ -295,15 +281,14 @@ export default function RoomPage() {
 		}
 	}
 	const handleCellClick = (x: number, y: number) => {
-		if (!gameState || !userId || selectedNumIndex === null) return;
-		// TODO: 正しいoperationとnumをいれる
+		if (!gameState || !user || !user.id || selectedNumIndex === null) return;
 		sendWsMessage({
 			type: "makeMove",
 			payload: {
 				x,
 				y,
 				operation: selectedOperation,
-				num: gameState.hands[userId][selectedNumIndex],
+				num: gameState.hands[user.id][selectedNumIndex],
 				numIndex: selectedNumIndex,
 			},
 		});
@@ -330,29 +315,43 @@ export default function RoomPage() {
 		});
 	};
 
+	const handleBackToLobby = () => {
+		sendWsMessage({ type: "backToLobby" });
+	};
+
+	const handleLeaveRoom = async () => {
+		sendWsMessage({ type: "removePlayer" });
+		if (roomId) {
+			await client.rooms[":roomId"].leave.$post({ param: { roomId } });
+		}
+		navigate("/logic-puzzle/lobby");
+	};
+
 	// --- Render Logic ---
 
-	if (!gameState || !userId || !currentPlayerId) {
+	if (!user || !roomId) {
 		return (
 			<div className="p-8 text-center">
-				<h1>Loading...</h1>
+				<h1>Error: Room ID not found.</h1>
+				<p>Please ensure you are accessing a valid room.</p>
 			</div>
 		);
 	}
 
-	// if (gameState.players.length < 2) {
-	// 	return (
-	// 		<div className="p-8 text-center">
-	// 			<h1 className="text-3xl font-bold">Waiting for opponent...</h1>
-	// 			<p className="mt-4">Room ID: {roomId}</p>
-	// 			<div className="mt-8">
-	// 				<span className="loading loading-lg loading-spinner"></span>
-	// 			</div>
-	// 		</div>
-	// 	);
-	// }
+	if (!gameState) {
+		console.log(
+			"Loading or waiting for game state...",
+			gameState,
+			currentPlayerId,
+		);
+		return (
+			<div className="flex items-center justify-center min-h-screen">
+				<div className="loading loading-spinner loading-lg" />
+			</div>
+		);
+	}
 
-	if (gameState.status === "loading") {
+	if (myStatus === "preparing" || myStatus === "ready") {
 		return (
 			<div className="flex h-screen w-full flex-col items-center justify-center gap-8">
 				<h1 className="text-2xl font-bold">
@@ -387,7 +386,7 @@ export default function RoomPage() {
 						<select
 							className="select select-bordered"
 							value={gameState.rules.boardSize}
-							disabled={userId !== roomHost}
+							disabled={user.id !== roomHost}
 							onChange={(e) =>
 								handleRuleChange({
 									rule: "boardSize",
@@ -410,7 +409,7 @@ export default function RoomPage() {
 							type="checkbox"
 							className="toggle toggle-success"
 							checked={gameState.rules.negativeDisabled}
-							disabled={userId !== roomHost}
+							disabled={user.id !== roomHost}
 							onChange={(e) =>
 								handleRuleChange({
 									rule: "negativeDisabled",
@@ -426,7 +425,7 @@ export default function RoomPage() {
 						<select
 							className="select select-bordered"
 							value={gameState.rules.timeLimit}
-							disabled={userId !== roomHost}
+							disabled={user.id !== roomHost}
 							onChange={(e) =>
 								handleRuleChange({
 									rule: "timeLimit",
@@ -447,15 +446,21 @@ export default function RoomPage() {
 				</div>
 				<div
 					onClick={handleReadyClick}
-					className={`card w-32 h-20 cursor-pointer items-center justify-center transition-colors duration-150 ${gameState.playerStatus[userId] === "ready" ? "bg-green-500 text-white font-bold" : "bg-base-300 text-grey-700 shadow-lg"}`}
+					className={`card w-32 h-20 cursor-pointer items-center justify-center transition-colors duration-150 ${myStatus === "ready" ? "bg-green-500 text-white font-bold" : "bg-base-300 text-grey-700 shadow-lg"}`}
 				>
-					{gameState.playerStatus[userId] === "ready" ? "READY!!" : "ready?"}
+					{myStatus === "ready" ? "READY!!" : "ready?"}
+				</div>
+				<div onClick={handleLeaveRoom} className="btn btn-error">
+					Leave Room
 				</div>
 			</div>
 		);
 	}
 
-	if (gameState.winners !== null) {
+	if (myStatus === "finished") {
+		if (!gameState.winners || gameState.winners.length === 0) {
+			throw new Error("Winners data is missing");
+		}
 		if (winnerDisplay === 0) {
 			return (
 				<div>
@@ -526,9 +531,13 @@ export default function RoomPage() {
 						>
 							Back
 						</button>
-						<a href="/logic-puzzle/lobby" className="btn btn-primary">
+						<button
+							className="btn btn-primary"
+							onClick={handleBackToLobby}
+							type="button"
+						>
 							to Lobby
-						</a>
+						</button>
 					</div>
 				</div>
 			);
@@ -578,55 +587,61 @@ export default function RoomPage() {
 		);
 	}
 
-	return (
-		<div className="p-4 md:p-8 flex flex-col gap-4">
-			{/* Opponent's Info */}
-			{opponentIds && (
-				<div className="flex justify-center gap-4">
-					{opponentIds.map((opponentId) => (
-						<Mission
-							key={opponentId}
-							title={`${gameState?.names[opponentId]}'s mission`}
-							description={gameState?.missions[opponentId]?.mission.description}
-						/>
-					))}
-				</div>
-			)}
-			{/* Game Board */}
-			<div className="w-full max-w-md mx-auto">
-				<TurnDisplay
-					round={gameState.round}
-					currentPlayerId={currentPlayerId}
-					currentPlayerName={gameState.names[currentPlayerId]}
-					myId={userId}
-					remainingTime={Math.ceil(remainingTime / 1000)}
-				/>
-				<GameBoard board={gameState.board} onCellClick={handleCellClick} />
-			</div>
-			{/* Player's Info */}
-			<div className="flex flex-col items-center gap-4">
-				{gameState.missions[userId] && (
-					<Mission
-						title={"your mission"}
-						description={gameState?.missions[userId]?.mission.description}
-					/>
+	if (myStatus === "playing") {
+		if (!currentPlayerId) {
+			throw new Error("Current player ID is missing");
+		}
+		return (
+			<div className="p-4 md:p-8 flex flex-col gap-4">
+				{/* Opponent's Info */}
+				{opponentIds && (
+					<div className="flex justify-center gap-4 mb-4">
+						{opponentIds.map((opponentId) => (
+							<Mission
+								key={opponentId}
+								title={`${gameState?.names[opponentId]}'s mission`}
+								description={
+									gameState?.missions[opponentId]?.mission.description
+								}
+							/>
+						))}
+					</div>
 				)}
-				<div className="flex flex-row items-end gap-4">
-					{gameState.hands[userId] && (
-						<Hand
-							cards={gameState.hands[userId]}
-							onCardClick={setSelectedNumIndex}
-							selectedNumIndex={selectedNumIndex}
+				{/* Game Board */}
+				<div className="w-full max-w-md mx-auto">
+					<TurnDisplay
+						round={gameState.round}
+						currentPlayerId={currentPlayerId}
+						currentPlayerName={gameState.names[currentPlayerId]}
+						myId={user.id}
+						remainingTime={Math.ceil(remainingTime / 1000)}
+					/>
+					<GameBoard board={gameState.board} onCellClick={handleCellClick} />
+				</div>
+				{/* Player's Info */}
+				<div className="flex flex-col items-center gap-4 mt-4">
+					{gameState.missions[user.id] && (
+						<Mission
+							title={"your mission"}
+							description={gameState?.missions[user.id]?.mission.description}
 						/>
 					)}
-					<div className="flex flex-col items-center gap-2">
+					<div className="flex flex-row items-end gap-4">
+						{gameState.hands[user.id] && (
+							<Hand
+								cards={gameState.hands[user.id]}
+								onCardClick={setSelectedNumIndex}
+								selectedNumIndex={selectedNumIndex}
+							/>
+						)}
+						<div className="flex flex-col items-center gap-2"></div>
 						<Operations
 							onOperationClick={setSelectedOperation}
 							selectedOperation={selectedOperation}
 						/>
 						<button
 							type="button"
-							disabled={currentPlayerId !== userId}
+							disabled={currentPlayerId !== user.id}
 							className="btn btn-primary hover:btn-accent"
 							onClick={() => {
 								sendWsMessage({ type: "pass" });
@@ -636,11 +651,41 @@ export default function RoomPage() {
 						</button>
 					</div>
 				</div>
+				{gameState.status === "paused" && (
+					<div className="p-4 text-center bg-base-200 rounded-lg shadow">
+						<h2 className="text-xl font-bold">Connection lost</h2>
+						<p>
+							Someone else has lost connection. Please wait while we try to
+							reconnect…
+						</p>
+					</div>
+				)}
 			</div>
-			{/* "you are the only player left" popup */}
-			{gameState.status === "one player" && (
-				<div>You are the only player left.</div>
-			)}
-		</div>
-	);
+		);
+	}
+
+	if (myStatus === "error") {
+		return (
+			<div className="p-8 text-center">
+				<h1 className="text-3xl font-bold text-red-500">Error</h1>
+				<p className="mt-4">
+					An error occurred in the game. Please try again later.
+				</p>
+				<a href="/logic-puzzle/lobby" className="btn btn-primary mt-4">
+					Go to Lobby
+				</a>
+			</div>
+		);
+	}
+
+	if (myStatus === null && !(user.id in gameState.players)) {
+		console.log("leaved");
+		return (
+			<div className="flex items-center justify-center min-h-screen">
+				<div className="loading loading-spinner loading-lg" />
+			</div>
+		);
+	}
+
+	throw new Error(`Unknown player status: ${myStatus}`);
 }

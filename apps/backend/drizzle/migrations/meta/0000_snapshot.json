@@ -1,0 +1,193 @@
+{
+	"id": "b05bb5ae-e798-4dbf-b97e-efee1a014a4b",
+	"prevId": "00000000-0000-0000-0000-000000000000",
+	"version": "7",
+	"dialect": "postgresql",
+	"tables": {
+		"public.RoomSecret": {
+			"name": "RoomSecret",
+			"schema": "",
+			"columns": {
+				"roomId": {
+					"name": "roomId",
+					"type": "text",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"secret": {
+					"name": "secret",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {
+				"RoomSecret_roomId_Room_id_fk": {
+					"name": "RoomSecret_roomId_Room_id_fk",
+					"tableFrom": "RoomSecret",
+					"tableTo": "Room",
+					"columnsFrom": ["roomId"],
+					"columnsTo": ["id"],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {
+				"RoomSecret_secret_unique": {
+					"name": "RoomSecret_secret_unique",
+					"nullsNotDistinct": false,
+					"columns": ["secret"]
+				}
+			},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.Room": {
+			"name": "Room",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "text",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"name": {
+					"name": "name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"createdAt": {
+					"name": "createdAt",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": false,
+					"default": "now()"
+				},
+				"users": {
+					"name": "users",
+					"type": "text[]",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"hostId": {
+					"name": "hostId",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {
+				"Room_hostId_User_id_fk": {
+					"name": "Room_hostId_User_id_fk",
+					"tableFrom": "Room",
+					"tableTo": "User",
+					"columnsFrom": ["hostId"],
+					"columnsTo": ["id"],
+					"onDelete": "no action",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.Session": {
+			"name": "Session",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "text",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"userId": {
+					"name": "userId",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"sessionToken": {
+					"name": "sessionToken",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {
+				"Session_userId_User_id_fk": {
+					"name": "Session_userId_User_id_fk",
+					"tableFrom": "Session",
+					"tableTo": "User",
+					"columnsFrom": ["userId"],
+					"columnsTo": ["id"],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {
+				"Session_sessionToken_unique": {
+					"name": "Session_sessionToken_unique",
+					"nullsNotDistinct": false,
+					"columns": ["sessionToken"]
+				}
+			},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.User": {
+			"name": "User",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "text",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"createdAt": {
+					"name": "createdAt",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": false,
+					"default": "now()"
+				},
+				"name": {
+					"name": "name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		}
+	},
+	"enums": {},
+	"schemas": {},
+	"sequences": {},
+	"roles": {},
+	"policies": {},
+	"views": {},
+	"_meta": {
+		"columns": {},
+		"schemas": {},
+		"tables": {}
+	}
+}

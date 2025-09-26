@@ -1,11 +1,12 @@
 import { DurableObject } from "cloudflare:workers";
+import type { Env } from "hono/types";
 import { type Mission, missions } from "./mission";
 
 // 定数
 const DEFAULT_BOARD_SIZE = 3;
 const DEFAULT_TIME_LIMIT_MS = 10000;
 // timeout
-let timeout: NodeJS.Timeout;
+let timeout: ReturnType<typeof setTimeout>;
 
 // 型
 export type MoveAction = {
@@ -24,9 +25,15 @@ export type Rule =
 export type Operation = "add" | "sub";
 
 export type GameState = {
+	status: "preparing" | "playing" | "paused";
 	players: string[];
 	playerStatus: {
-		[playerId: string]: "preparing" | "ready" | "playing";
+		[playerId: string]:
+			| "preparing"
+			| "ready"
+			| "playing"
+			| "finished"
+			| "error";
 	};
 	names: {
 		[playerId: string]: string;
@@ -48,7 +55,6 @@ export type GameState = {
 			mission: Mission;
 		};
 	};
-	status: "loading" | "ok" | "one player";
 	rules: {
 		negativeDisabled: boolean;
 		boardSize: number;
@@ -61,7 +67,9 @@ export type MessageType =
 	| { type: "makeMove"; payload: MoveAction }
 	| { type: "setReady"; payload?: undefined }
 	| { type: "changeRule"; payload: Rule }
-	| { type: "pass"; payload?: undefined };
+	| { type: "pass"; payload?: undefined }
+	| { type: "backToLobby"; payload?: undefined }
+	| { type: "removePlayer"; payload?: undefined };
 
 interface Session {
 	ws: WebSocket;
@@ -72,7 +80,7 @@ export class Magic extends DurableObject {
 	gameState: GameState | undefined = undefined;
 	sessions: Session[] = [];
 
-	constructor(ctx: DurableObjectState, env: unknown) {
+	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
 		this.ctx.blockConcurrencyWhile(async () => {
 			this.gameState = await this.ctx.storage.get<GameState>("gameState");
@@ -94,6 +102,9 @@ export class Magic extends DurableObject {
 		}
 
 		const { 0: client, 1: server } = new WebSocketPair();
+
+		if (!this.gameState) await this.initialize();
+
 		await this.handleSession(server, playerId, playerName);
 
 		return new Response(null, {
@@ -108,7 +119,6 @@ export class Magic extends DurableObject {
 
 		ws.accept();
 
-		// Add player to the game state if not already present
 		await this.addPlayer(playerId, playerName);
 
 		ws.addEventListener("message", async (msg) => {
@@ -132,9 +142,17 @@ export class Magic extends DurableObject {
 					case "changeRule":
 						await this.changeRule(payload);
 						break;
+					case "backToLobby":
+						await this.backToLobby(playerId);
+						break;
+					case "removePlayer":
+						await this.removePlayer(playerId);
+						break;
 					case "pass":
 						await this.pass();
 						break;
+					default:
+						throw new Error(`Unhandled message type: ${type}`);
 				}
 			} catch {
 				ws.send(JSON.stringify({ error: "Invalid message" }));
@@ -143,8 +161,7 @@ export class Magic extends DurableObject {
 
 		const closeOrErrorHandler = () => {
 			this.sessions = this.sessions.filter((s) => s !== session);
-			// remove player from game state on disconnect
-			this.removePlayer(playerId);
+			this.updateDisconnectedPlayer(playerId);
 		};
 		ws.addEventListener("close", closeOrErrorHandler);
 		ws.addEventListener("error", closeOrErrorHandler);
@@ -173,15 +190,13 @@ export class Magic extends DurableObject {
 			names: {},
 			round: 0,
 			turn: 0,
-			board: Array(DEFAULT_BOARD_SIZE)
-				.fill(null)
-				.map(() => Array(DEFAULT_BOARD_SIZE).fill(null)),
+			board: [],
 			winners: null,
 			winnersAry: {},
 			gameId: this.ctx.id.toString(),
 			hands: {},
 			missions: {},
-			status: "loading",
+			status: "preparing",
 			rules: {
 				negativeDisabled: false,
 				boardSize: DEFAULT_BOARD_SIZE,
@@ -195,50 +210,128 @@ export class Magic extends DurableObject {
 
 	async addPlayer(playerId: string, playerName: string) {
 		if (!this.gameState) {
-			await this.initialize();
+			console.error("Game state is not initialized");
+			return;
 		}
-		if (this.gameState && !this.gameState.players.includes(playerId)) {
-			this.gameState.players.push(playerId);
-			this.gameState.names[playerId] = playerName;
-			this.gameState.playerStatus[playerId] = "preparing";
+		console.log(
+			"Adding player:",
+			playerId,
+			playerName,
+			this.gameState.players.includes(playerId),
+		);
+
+		// New player
+		if (!this.gameState.players.includes(playerId)) {
+			switch (this.gameState.status) {
+				case "preparing":
+					if (!this.gameState.players.includes(playerId)) {
+						this.gameState.players.push(playerId);
+						this.gameState.names[playerId] = playerName;
+						this.gameState.playerStatus[playerId] = "preparing";
+
+						await this.ctx.storage.put("gameState", this.gameState);
+						this.broadcast({ type: "state", payload: this.gameState });
+					}
+					break;
+				case "playing":
+					console.error("Game already started, cannot join now.");
+					break;
+				case "paused":
+					if (this.gameState.players.includes(playerId)) {
+						this.gameState.playerStatus[playerId] = "playing";
+						if (
+							Object.values(this.gameState.playerStatus).every(
+								(status) => status === "playing",
+							)
+						) {
+							console.log("All players reconnected, resuming game.");
+							this.gameState.status = "playing";
+						} else {
+							console.log("Waiting for other players to reconnect.");
+						}
+						await this.ctx.storage.put("gameState", this.gameState);
+						this.broadcast({ type: "state", payload: this.gameState });
+					} else {
+						console.error("Game already started, cannot join now.");
+					}
+					break;
+				default:
+					this.gameState.status satisfies never;
+			}
+		} else {
+			// Reconnecting player
+			if (this.gameState.playerStatus[playerId] !== "error") {
+				throw new Error(
+					`Player is already connected but tried to connect again: ${this.gameState.playerStatus[playerId]}`,
+				);
+			}
+			switch (this.gameState.status) {
+				case "preparing":
+					this.gameState.playerStatus[playerId] = "preparing";
+					break;
+				case "playing":
+					throw new Error("Game already started, but trying to reconnect.");
+				case "paused":
+					this.gameState.playerStatus[playerId] = "playing";
+					if (
+						Object.values(this.gameState.playerStatus).every(
+							(status) => status === "playing",
+						)
+					) {
+						console.log("All players reconnected, resuming game.");
+						this.gameState.status = "playing";
+					} else {
+						console.log("Waiting for other players to reconnect.");
+					}
+					break;
+				default:
+					this.gameState.status satisfies never;
+			}
 
 			await this.ctx.storage.put("gameState", this.gameState);
 			this.broadcast({ type: "state", payload: this.gameState });
 		}
 	}
 
-	async removePlayer(playerId: string) {
+	async updateDisconnectedPlayer(playerId: string) {
 		if (!this.gameState) throw new Error("Game state is not initialized");
-		this.gameState.players = this.gameState.players.filter(
-			(player) => player !== playerId,
-		);
-		delete this.gameState.names[playerId];
-		delete this.gameState.hands[playerId];
-		delete this.gameState.missions[playerId];
-		if (this.gameState.players.length === 1) {
-			this.gameState.status = "one player";
+
+		if (!this.gameState.players.includes(playerId)) {
+			console.error("Player not found in game:", playerId);
+			return;
 		}
+		this.gameState.playerStatus[playerId] = "error";
+		if (this.gameState.status !== "preparing") {
+			this.gameState.status = "paused";
+		}
+
+		await this.ctx.storage.put("gameState", this.gameState);
+		this.broadcast({ type: "state", payload: this.gameState });
 	}
 
 	async startGame() {
-		if (
-			!this.gameState ||
-			this.gameState.status === "ok" ||
-			this.gameState.status === "one player"
-		)
-			return;
-
-		this.gameState.status = "ok";
-		this.gameState.players.forEach((id) => {
-			if (this.gameState) this.gameState.playerStatus[id] = "playing";
-		});
-		// Initialize player hands and missions
+		if (!this.gameState || this.gameState.status !== "preparing") return;
+		this.clearGameState();
 		for (const playerId of this.gameState.players) {
-			if (!this.gameState.hands[playerId])
-				this.gameState.hands[playerId] = this.drawInitialHand();
-			if (!this.gameState.missions[playerId])
-				this.gameState.missions[playerId] = this.getRandomMission();
+			if (this.gameState.playerStatus[playerId] !== "ready") {
+				console.error("one of the players not ready:", playerId);
+				return;
+			}
+			this.gameState.playerStatus[playerId] = "playing";
+
+			if (this.gameState.hands[playerId]) {
+				console.error("player already has a hand:", playerId);
+				return;
+			}
+			this.gameState.hands[playerId] = this.drawInitialHand();
+
+			if (this.gameState.missions[playerId]) {
+				console.error("player already has a mission:", playerId);
+				return;
+			}
+			this.gameState.missions[playerId] = this.getRandomMission();
 		}
+		this.gameState.status = "playing";
 		this.gameState.timeLimitUnix =
 			Date.now() + this.gameState.rules.timeLimit * 1000;
 		clearTimeout(timeout);
@@ -328,6 +421,14 @@ export class Magic extends DurableObject {
 				console.log("this.gameState.winnersAry", this.gameState.winnersAry);
 			}
 		}
+
+		if (this.gameState.winners) {
+			this.gameState.status = "preparing";
+			Object.keys(this.gameState.playerStatus).forEach((playerId) => {
+				if (!this.gameState) throw new Error("Game state is not initialized");
+				this.gameState.playerStatus[playerId] = "finished";
+			});
+		}
 		this.gameState.timeLimitUnix =
 			Date.now() + this.gameState.rules.timeLimit * 1000;
 		clearTimeout(timeout);
@@ -338,6 +439,7 @@ export class Magic extends DurableObject {
 		await this.ctx.storage.put("gameState", this.gameState);
 		this.broadcast({ type: "state", payload: this.gameState });
 	}
+
 	async setReady(player: string) {
 		if (!this.gameState) return;
 		this.gameState.playerStatus[player] = "ready";
@@ -352,6 +454,57 @@ export class Magic extends DurableObject {
 			await this.ctx.storage.put("gameState", this.gameState);
 			this.broadcast({ type: "state", payload: this.gameState });
 		}
+	}
+	async backToLobby(playerId: string) {
+		if (!this.gameState) return;
+		this.gameState.playerStatus[playerId] = "preparing";
+
+		await this.ctx.storage.put("gameState", this.gameState);
+		this.broadcast({ type: "state", payload: this.gameState });
+	}
+
+	async removePlayer(playerId: string) {
+		if (!this.gameState) return;
+
+		this.gameState.players = this.gameState.players.filter(
+			(p) => p !== playerId,
+		);
+
+		delete this.gameState.playerStatus[playerId];
+		delete this.gameState.names[playerId];
+		delete this.gameState.hands[playerId];
+		delete this.gameState.missions[playerId];
+
+		if (this.gameState.players.length === 0) {
+			await this.ctx.storage.delete("gameState");
+			return;
+		}
+
+		await this.ctx.storage.put("gameState", this.gameState);
+		this.broadcast({ type: "state", payload: this.gameState });
+	}
+
+	async clearGameState() {
+		if (!this.gameState) return;
+
+		const size = this.gameState.rules.boardSize;
+
+		this.gameState = {
+			...structuredClone(this.gameState),
+			board: Array(size)
+				.fill(null)
+				.map(() => Array(size).fill(null)),
+			round: 0,
+			turn: 0,
+			winners: null,
+			winnersAry: {},
+			hands: {},
+			missions: {},
+		};
+
+		console.log(this.gameState);
+		await this.ctx.storage.delete("gameState");
+		this.broadcast({ type: "state", payload: this.gameState });
 	}
 
 	async changeRule(payload: Rule) {

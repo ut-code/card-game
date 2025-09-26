@@ -1,6 +1,6 @@
 import type { User } from "@apps/backend";
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useOutletContext } from "react-router";
 import { client } from "../../lib/client";
 
 type Room = {
@@ -10,7 +10,8 @@ type Room = {
 };
 
 export default function Lobby() {
-	const [user, setUser] = useState<User | { error: string } | null>(null);
+	const me = useOutletContext<User | null>();
+	const [user, setUser] = useState<User | null>(me ?? null);
 	const [userName, setUserName] = useState("");
 	const [rooms, setRooms] = useState<Room[]>([]);
 	const [newRoomName, setNewRoomName] = useState("");
@@ -27,19 +28,8 @@ export default function Lobby() {
 	];
 
 	useEffect(() => {
-		const fetchUser = async () => {
-			const res = await client.api.users.me.$get();
-			const data = await res.json();
-			if (res.ok) {
-				setUser(data);
-			}
-		};
-		fetchUser();
-	}, []);
-
-	useEffect(() => {
 		const fetchRooms = async () => {
-			const res = await client.api.rooms.$get();
+			const res = await client.rooms.$get();
 			if (res.ok) {
 				const data = await res.json();
 				setRooms(data);
@@ -50,16 +40,17 @@ export default function Lobby() {
 
 	const handleCreateUser = async () => {
 		if (!userName) return;
-		const res = await client.api.users.create.$post({
+		const res = await client.users.create.$post({
 			json: { name: userName },
 		});
 		const data = await res.json();
-		setUser(data);
+		const createdAt = data.createdAt ? new Date(data.createdAt) : null;
+		setUser({ ...data, createdAt });
 	};
 
 	const handleCreateRoom = async () => {
 		if (!newRoomName) return;
-		const res = await client.api.rooms.create.$post({
+		const res = await client.rooms.create.$post({
 			json: { name: newRoomName },
 		});
 		if (res.ok) {
@@ -70,7 +61,7 @@ export default function Lobby() {
 	};
 
 	const handleJoinRoom = async (roomId: string) => {
-		const res = await client.api.rooms[":roomId"].join.$post({
+		const res = await client.rooms[":roomId"].join.$post({
 			param: { roomId },
 		});
 		if (res.ok) {
@@ -81,14 +72,12 @@ export default function Lobby() {
 	const handleJoinWithSecret = async () => {
 		if (!roomSecret) return;
 		setJoinError(null);
-		const res = await client.api.rooms.join.$post({
+		const res = await client.rooms.join.$post({
 			json: { secret: roomSecret },
 		});
 		const data = await res.json();
 		if (res.ok && "id" in data) {
 			navigate(`/logic-puzzle/room/${data.id}`);
-		} else if ("error" in data) {
-			setJoinError(data.error);
 		} else {
 			setJoinError("Failed to join room");
 		}
@@ -98,13 +87,6 @@ export default function Lobby() {
 		return (
 			<div className="p-8 flex flex-col items-center">
 				<h1 className="text-2xl font-bold mb-4">Create User</h1>
-				{user && "error" in user && (
-					<div className="alert alert-error shadow-lg mb-4">
-						<div>
-							<span>{user.error}</span>
-						</div>
-					</div>
-				)}
 				<div className="card w-96 bg-base-100 shadow-xl">
 					<div className="card-body">
 						<input
@@ -264,7 +246,7 @@ export default function Lobby() {
 											type="button"
 											onClick={() => handleJoinRoom(room.id)}
 										>
-											Join
+											Join without Secret
 										</button>
 									</div>
 								</div>

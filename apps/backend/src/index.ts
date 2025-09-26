@@ -1,11 +1,13 @@
-import { randomInt } from "node:crypto";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { Hono } from "hono";
+import { eq } from "drizzle-orm";
+import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import { type Env, Hono } from "hono";
 import { getSignedCookie, setSignedCookie } from "hono/cookie";
 import { cors } from "hono/cors";
 import { createMiddleware } from "hono/factory";
-import { Pool } from "pg";
-import { PrismaClient } from "./generated/prisma";
+import { HTTPException } from "hono/http-exception";
+import postgres from "postgres";
+import * as schema from "./db/schema";
+
 import {
 	type GameState,
 	Magic,
@@ -18,16 +20,14 @@ import {
 type Bindings = {
 	MAGIC: DurableObjectNamespace;
 	DATABASE_URL: string;
+	ENV: string;
 };
+
+export type User = typeof schema.users.$inferSelect;
 
 type Variables = {
-	prisma: PrismaClient;
+	db: PostgresJsDatabase<typeof schema>;
 	user: User;
-};
-
-export type User = {
-	id: string;
-	name: string;
 };
 
 // TODO: 環境変数にする
@@ -35,209 +35,258 @@ const secret = "hoge";
 
 const authMiddleware = createMiddleware<{ Variables: Variables }>(
 	async (c, next) => {
-		const prisma = c.get("prisma");
-		const sessionToken = await getSignedCookie(c, secret, "sessionToken");
-		if (!sessionToken) {
-			return c.json({ error: "Not authenticated" }, 401);
+		try {
+			console.log("Entering auth middleware...");
+
+			const db = c.get("db");
+			const sessionToken = await getSignedCookie(c, secret, "sessionToken");
+
+			if (!sessionToken) {
+				console.log("No session token found. Throwing 401.");
+				throw new HTTPException(401, { message: "Not authenticated" });
+			}
+
+			const session = await db.query.sessions.findFirst({
+				where: eq(schema.sessions.sessionToken, sessionToken),
+				with: {
+					user: true,
+				},
+			});
+
+			if (!session?.user) {
+				console.log("Invalid session or user not found. Throwing 401.");
+				throw new HTTPException(401, { message: "Invalid session" });
+			}
+
+			console.log("Authentication successful for user:", session.user.name);
+			c.set("user", session.user);
+			await next();
+		} catch (error) {
+			console.error("Error in auth middleware:", error);
+			throw error;
 		}
-
-		const session = await prisma.session.findUnique({
-			where: { sessionToken },
-			include: { user: true },
-		});
-
-		if (!session || !session.user) {
-			return c.json({ error: "Invalid session" }, 401);
-		}
-
-		c.set("user", session.user);
-		await next();
 	},
 );
 
-const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
+const apiApp = new Hono<{
+	env: Env;
+	Bindings: Bindings;
+	Variables: Variables;
+}>()
 	.use(
 		"*",
 		cors({
+			// origin: (_origin, c) => {
+			// 	if (c.env.ENV === "production") {
+			// 		return undefined;
+			// 	}
+			// 	return "http://localhost:5173";
+			// },
 			origin: "http://localhost:5173",
 			credentials: true,
 		}),
 	)
 	.use("*", async (c, next) => {
-		const pool = new Pool({ connectionString: c.env.DATABASE_URL });
-		const adapter = new PrismaPg(pool);
-		const prisma = new PrismaClient({ adapter });
-		c.set("prisma", prisma);
+		const sql = postgres(c.env.DATABASE_URL, { prepare: false });
+		const db = drizzle(sql, { schema });
+		c.set("db", db);
 		await next();
 	})
-	.basePath("/api")
 
-	// User routes (remains the same)
+	// User routes
 	.get("/users/me", authMiddleware, async (c) => {
 		const user = c.get("user");
 		return c.json(user);
 	})
 	.post("/users/create", async (c) => {
-		const prisma = c.get("prisma");
+		const db = c.get("db");
 		const { name } = await c.req.json<{ name: string }>();
 		if (!name) {
-			return c.json({ error: "Name is required" }, 400);
+			throw new HTTPException(400, { message: "Name is required" });
 		}
-		const user = await prisma.user.create({
-			data: {
-				name,
-			},
-		});
 
-		const session = await prisma.session.create({
-			data: {
-				userId: user.id,
-				sessionToken: crypto.randomUUID(),
-			},
-		});
+		const userId = crypto.randomUUID();
+		const [newUser] = await db
+			.insert(schema.users)
+			.values({ id: userId, name })
+			.returning();
 
-		await setSignedCookie(c, "sessionToken", session.sessionToken, secret, {
+		const sessionToken = crypto.randomUUID();
+		const [newSession] = await db
+			.insert(schema.sessions)
+			.values({ id: crypto.randomUUID(), userId, sessionToken })
+			.returning();
+
+		await setSignedCookie(c, "sessionToken", newSession.sessionToken, secret, {
 			httpOnly: true,
 			maxAge: 60 * 60 * 24 * 7, // 1 week
-			secure: false, // Allow cookie over HTTP in development
+			secure: c.env.ENV === "production",
 			sameSite: "Lax",
 		});
 
-		return c.json(user, 201);
+		return c.json(newUser, 201);
 	})
 
 	// Room routes
 	.get("/rooms", async (c) => {
-		const prisma = c.get("prisma");
-		const rooms = await prisma.room.findMany();
+		const db = c.get("db");
+		const rooms = await db.query.rooms.findMany();
 		return c.json(rooms);
 	})
 	.post("/rooms/create", authMiddleware, async (c) => {
-		const prisma = c.get("prisma");
+		const db = c.get("db");
 		const user = c.get("user");
 
 		const { name } = await c.req.json<{ name: string }>();
 		if (!name) {
-			return c.json({ error: "Room name is required" }, 400);
+			throw new HTTPException(400, { message: "Room name is required" });
 		}
 
-		const secret = randomInt(100000, 999999).toString();
+		const roomSecret = Math.floor(100000 + Math.random() * 900000).toString();
+		const roomId = crypto.randomUUID();
 
-		const room = await prisma.room.create({
-			data: {
+		const [newRoom] = await db
+			.insert(schema.rooms)
+			.values({
+				id: roomId,
 				name,
 				hostId: user.id,
 				users: [user.id],
-			},
+			})
+			.returning();
+
+		await db.insert(schema.roomSecrets).values({
+			roomId: newRoom.id,
+			secret: roomSecret,
 		});
 
-		await prisma.roomSecret.create({
-			data: {
-				roomId: room.id,
-				secret,
-			},
-		});
-
-		return c.json(room, 201);
+		return c.json(newRoom, 201);
 	})
 	.post("/rooms/join", authMiddleware, async (c) => {
-		const prisma = c.get("prisma");
+		const db = c.get("db");
 		const user = c.get("user");
 		const { secret } = await c.req.json<{ secret: string }>();
 		if (!secret) {
-			return c.json({ error: "Secret is required" }, 400);
+			throw new HTTPException(400, { message: "Secret is required" });
 		}
 
-		const roomSecret = await prisma.roomSecret.findUnique({
-			where: { secret },
+		const roomSecret = await db.query.roomSecrets.findFirst({
+			where: eq(schema.roomSecrets.secret, secret),
 		});
 		if (!roomSecret) {
-			return c.json({ error: "Invalid secret" }, 401);
+			throw new HTTPException(401, { message: "Invalid secret" });
 		}
 
-		const room = await prisma.room.findUnique({
-			where: { id: roomSecret.roomId },
+		const room = await db.query.rooms.findFirst({
+			where: eq(schema.rooms.id, roomSecret.roomId),
 		});
 		if (!room) {
-			return c.json({ error: "Room not found" }, 404);
+			throw new HTTPException(404, { message: "Room not found" });
 		}
 
 		if (!room.users.includes(user.id)) {
-			await prisma.room.update({
-				where: { id: room.id },
-				data: { users: { push: user.id } },
-			});
+			const newUsers = [...room.users, user.id];
+			await db
+				.update(schema.rooms)
+				.set({ users: newUsers })
+				.where(eq(schema.rooms.id, room.id));
 		}
 
 		return c.json(room, 200);
 	})
 	.get("/rooms/:roomId", async (c) => {
-		const prisma = c.get("prisma");
+		const db = c.get("db");
 		const { roomId } = c.req.param();
-		const room = await prisma.room.findUnique({ where: { id: roomId } });
+		const room = await db.query.rooms.findFirst({
+			where: eq(schema.rooms.id, roomId),
+		});
 		if (!room) {
-			return c.json({ error: "Room not found" }, 404);
+			throw new HTTPException(404, { message: "Room not found" });
 		}
 		return c.json(room);
 	})
-	.get("/rooms/:roomId/secret", async (c) => {
-		const prisma = c.get("prisma");
+	.get("/rooms/:roomId/secret", authMiddleware, async (c) => {
+		const db = c.get("db");
+		const user = c.get("user");
 		const { roomId } = c.req.param();
-		const roomSecret = await prisma.roomSecret.findUnique({
-			where: { roomId: roomId },
+		const room = await db.query.rooms.findFirst({
+			where: eq(schema.rooms.id, roomId),
+		});
+		if (!room) {
+			throw new HTTPException(404, { message: "Room not found" });
+		}
+		if (!room.users.includes(user.id)) {
+			throw new HTTPException(403, { message: "Unauthorized" });
+		}
+		const roomSecret = await db.query.roomSecrets.findFirst({
+			where: eq(schema.roomSecrets.roomId, roomId),
 		});
 		if (!roomSecret) {
-			return c.json({ error: "Room not found" }, 404);
+			throw new HTTPException(404, { message: "Room secret not found" });
 		}
 		return c.json(roomSecret);
 	})
 	.post("/rooms/:roomId/join", authMiddleware, async (c) => {
-		const prisma = c.get("prisma");
+		const db = c.get("db");
 		const user = c.get("user");
 		const { roomId } = c.req.param();
 
-		const room = await prisma.room.findUnique({ where: { id: roomId } });
+		const room = await db.query.rooms.findFirst({
+			where: eq(schema.rooms.id, roomId),
+		});
 
 		if (!room) {
-			return c.json({ error: "Room not found" }, 404);
+			throw new HTTPException(404, { message: "Room not found" });
 		}
 
 		if (!room.users.includes(user.id)) {
-			await prisma.room.update({
-				where: { id: roomId },
-				data: { users: { push: user.id } },
-			});
+			const newUsers = [...room.users, user.id];
+			await db
+				.update(schema.rooms)
+				.set({ users: newUsers })
+				.where(eq(schema.rooms.id, room.id));
 		}
 
 		return c.json({ message: "Joined room successfully" });
 	})
 	.post("/rooms/:roomId/leave", authMiddleware, async (c) => {
-		const prisma = c.get("prisma");
+		const db = c.get("db");
 		const user = c.get("user");
 		const { roomId } = c.req.param();
 
-		const room = await prisma.room.findUnique({ where: { id: roomId } });
+		const room = await db.query.rooms.findFirst({
+			where: eq(schema.rooms.id, roomId),
+		});
 
 		if (!room) {
-			// Even if room doesn't exist, from user's perspective, they have left.
 			return c.json({ message: "Left room successfully" });
 		}
 
 		const updatedUsers = room.users.filter((p) => p !== user.id);
 
-		await prisma.room.update({
-			where: { id: roomId },
-			data: { users: updatedUsers },
-		});
+		await db
+			.update(schema.rooms)
+			.set({ users: updatedUsers })
+			.where(eq(schema.rooms.id, roomId));
 
 		return c.json({ message: "Left room successfully" });
 	})
-
 	.get("/games/:id/ws", authMiddleware, async (c) => {
-		const gameId = c.req.param("id");
+		const db = c.get("db");
+		const roomId = c.req.param("id");
 		const user = c.get("user");
 
-		const id = c.env.MAGIC.idFromName(gameId);
+		const room = await db.query.rooms.findFirst({
+			where: eq(schema.rooms.id, roomId),
+		});
+		if (!room) {
+			throw new HTTPException(404, { message: "Room not found" });
+		}
+		if (!room.users.includes(user.id)) {
+			throw new HTTPException(403, { message: "Unauthorized" });
+		}
+
+		const id = c.env.MAGIC.idFromName(roomId);
 		const stub = c.env.MAGIC.get(id);
 
 		const url = new URL(c.req.url);
@@ -247,8 +296,8 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 		return stub.fetch(request);
 	});
 
-export type AppType = typeof app;
-export default app;
+export type AppType = typeof apiApp;
+export default apiApp;
 
 export type { GameState, MoveAction, MessageType, Rule, Operation };
 export { Magic };
