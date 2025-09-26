@@ -328,7 +328,7 @@ export default function RoomPage() {
 		if (roomId) {
 			await client.rooms[":roomId"].leave.$post({ param: { roomId } });
 		}
-		navigate("/magic-square/lobby");
+		navigate("/magic-square");
 	};
 
 	// --- Render Logic ---
@@ -373,7 +373,14 @@ export default function RoomPage() {
 							key={playerId}
 							className="flex items-center justify-between gap-4 p-2"
 						>
-							<span className="font-medium">{gameState.names[playerId]}</span>
+							<span className="font-medium">
+								{gameState.names[playerId]}
+								{playerId === roomHost && (
+									<span className="badge badge-primary badge-sm ml-2">
+										Host
+									</span>
+								)}
+							</span>
 							<span
 								className={`rounded-full px-3 py-1 text-sm font-semibold ${
 									gameState.playerStatus[playerId] === "ready"
@@ -683,8 +690,8 @@ export default function RoomPage() {
 				<p className="mt-4">
 					An error occurred in the game. Please try again later.
 				</p>
-				<a href="/magic-square/lobby" className="btn btn-primary mt-4">
-					Go to Lobby
+				<a href="/magic-square" className="btn btn-primary mt-4">
+					Go back
 				</a>
 			</div>
 		);
