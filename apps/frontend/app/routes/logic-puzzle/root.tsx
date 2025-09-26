@@ -1,35 +1,26 @@
 import {
-	type LoaderFunctionArgs,
+	type ClientLoaderFunctionArgs,
 	Outlet,
 	redirect,
 	useLoaderData,
 } from "react-router";
-import { client } from "~/lib/client";
+import { client } from "../../lib/client";
 
-export async function loader({ request }: LoaderFunctionArgs) {
+export async function clientLoader({ request }: ClientLoaderFunctionArgs) {
 	const url = new URL(request.url);
 	const pathname = url.pathname;
-	const cookie = request.headers.get("cookie");
 
 	const roomMatch = pathname.match(/^\/logic-puzzle\/room\/([^/]+)/);
 
 	if (roomMatch) {
 		const roomId = roomMatch[1];
-		if (!cookie) {
-			return redirect("/logic-puzzle/lobby");
-		}
 
 		const [userRes, roomRes, roomSecretRes] = await Promise.all([
-			client.users.me.$get({}, { headers: { cookie } }),
+			client.users.me.$get(),
 			client.rooms[":roomId"].$get({ param: { roomId } }),
-			client.rooms[":roomId"].secret.$get(
-				{
-					param: { roomId },
-				},
-				{
-					headers: { cookie },
-				},
-			),
+			client.rooms[":roomId"].secret.$get({
+				param: { roomId },
+			}),
 		]);
 
 		if (!userRes.ok || !roomRes.ok || !roomSecretRes.ok) {
@@ -49,13 +40,14 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
 	if (url.pathname === "/logic-puzzle/lobby") {
 		try {
-			if (!cookie) return null;
+			const res = await client.users.me.$get({});
 
-			const res = await client.users.me.$get({}, { headers: { cookie } });
-			if (!res.ok) return null;
+			if (!res.ok) throw new Error("Failed to fetch user.", { cause: res });
+			const user = await res.json();
 
-			return await res.json();
-		} catch {
+			return user;
+		} catch (e) {
+			console.error(e);
 			return null;
 		}
 	}
@@ -72,7 +64,7 @@ export function HydrateFallback() {
 }
 
 export default function LogicPuzzleLayout() {
-	const context = useLoaderData<typeof loader>();
+	const context = useLoaderData<typeof clientLoader>();
 
 	return <Outlet context={context} />;
 }

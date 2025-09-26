@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { Hono } from "hono";
+import { type Env, Hono } from "hono";
 import { getSignedCookie, setSignedCookie } from "hono/cookie";
 import { cors } from "hono/cors";
 import { createMiddleware } from "hono/factory";
@@ -20,6 +20,7 @@ import {
 type Bindings = {
 	MAGIC: DurableObjectNamespace;
 	DATABASE_URL: string;
+	ENV: string;
 };
 
 export type User = typeof schema.users.$inferSelect;
@@ -34,33 +35,53 @@ const secret = "hoge";
 
 const authMiddleware = createMiddleware<{ Variables: Variables }>(
 	async (c, next) => {
-		const db = c.get("db");
-		const sessionToken = await getSignedCookie(c, secret, "sessionToken");
-		console.log("Session Token:", sessionToken);
-		if (!sessionToken) {
-			throw new HTTPException(401, { message: "Not authenticated" });
+		try {
+			console.log("Entering auth middleware...");
+
+			const db = c.get("db");
+			const sessionToken = await getSignedCookie(c, secret, "sessionToken");
+
+			if (!sessionToken) {
+				console.log("No session token found. Throwing 401.");
+				throw new HTTPException(401, { message: "Not authenticated" });
+			}
+
+			const session = await db.query.sessions.findFirst({
+				where: eq(schema.sessions.sessionToken, sessionToken),
+				with: {
+					user: true,
+				},
+			});
+
+			if (!session?.user) {
+				console.log("Invalid session or user not found. Throwing 401.");
+				throw new HTTPException(401, { message: "Invalid session" });
+			}
+
+			console.log("Authentication successful for user:", session.user.name);
+			c.set("user", session.user);
+			await next();
+		} catch (error) {
+			console.error("Error in auth middleware:", error);
+			throw error;
 		}
-
-		const session = await db.query.sessions.findFirst({
-			where: eq(schema.sessions.sessionToken, sessionToken),
-			with: {
-				user: true,
-			},
-		});
-
-		if (!session?.user) {
-			throw new HTTPException(401, { message: "Invalid session" });
-		}
-
-		c.set("user", session.user);
-		await next();
 	},
 );
 
-const apiApp = new Hono<{ Bindings: Bindings; Variables: Variables }>()
+const apiApp = new Hono<{
+	env: Env;
+	Bindings: Bindings;
+	Variables: Variables;
+}>()
 	.use(
 		"*",
 		cors({
+			// origin: (_origin, c) => {
+			// 	if (c.env.ENV === "production") {
+			// 		return undefined;
+			// 	}
+			// 	return "http://localhost:5173";
+			// },
 			origin: "http://localhost:5173",
 			credentials: true,
 		}),
@@ -99,7 +120,7 @@ const apiApp = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 		await setSignedCookie(c, "sessionToken", newSession.sessionToken, secret, {
 			httpOnly: true,
 			maxAge: 60 * 60 * 24 * 7, // 1 week
-			secure: false, // Allow cookie over HTTP in development
+			secure: c.env.ENV === "production",
 			sameSite: "Lax",
 		});
 

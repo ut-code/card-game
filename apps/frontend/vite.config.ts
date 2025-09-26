@@ -5,13 +5,18 @@ import { defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 
 export default defineConfig({
-	server: {
-		proxy: {
-			"/api": {
-				target: "http://localhost:8787",
-				changeOrigin: true,
-			},
-		},
-	},
-	plugins: [cloudflare(), tailwindcss(), reactRouter(), tsconfigPaths()],
+	// server: {
+	// 	proxy: {
+	// 		"/api": {
+	// 			target: "http://localhost:8787",
+	// 			changeOrigin: true,
+	// 		},
+	// 	},
+	// },
+	plugins: [
+		cloudflare({ viteEnvironment: { name: "ssr" } }),
+		tailwindcss(),
+		reactRouter(),
+		tsconfigPaths(),
+	],
 });

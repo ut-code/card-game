@@ -6,7 +6,7 @@ import { createRequestHandler } from "react-router";
 declare module "react-router" {
 	export interface AppLoadContext {
 		cloudflare: {
-			env: Bindings;
+			env: Env;
 			ctx: ExecutionContext;
 		};
 	}
@@ -16,14 +16,6 @@ const requestHandler = createRequestHandler(
 	() => import("virtual:react-router/server-build"),
 	import.meta.env.MODE,
 );
-
-// export default {
-// 	async fetch(request, env, ctx) {
-// 		return requestHandler(request, {
-// 			cloudflare: { env, ctx },
-// 		});
-// 	},
-// } satisfies ExportedHandler<Env>;
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -40,10 +32,3 @@ app.get("*", (c) => {
 
 export default app;
 export { Magic };
-
-// import handle from "hono-react-router-adapter/cloudflare-workers";
-// import * as build from "virtual:react-router/server-build";
-// import app, { Magic } from "@apps/backend";
-
-// export default handle(build, app);
-// export { Magic };

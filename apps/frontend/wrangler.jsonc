@@ -4,5 +4,26 @@
 	"compatibility_date": "2025-04-04",
 	"main": "./workers/app.ts",
 	"compatibility_flags": ["nodejs_compat"],
-	"vars": {}
+	"vars": {
+		"SITE_URL": "https://card-game-portal.ut-code.workers.dev",
+		"ENV": "development"
+	},
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "MAGIC",
+				"class_name": "Magic"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["Magic"]
+		}
+	],
+	"observability": {
+		"enabled": true,
+		"head_sampling_rate": 1
+	}
 }

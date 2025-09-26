@@ -11,7 +11,6 @@ import type {
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useOutletContext, useParams } from "react-router";
 import { client } from "../../lib/client";
-import { API_HOST } from "../../lib/env";
 
 // --- Game Components ---
 
@@ -170,7 +169,6 @@ function TurnDisplay({
 }
 
 export default function RoomPage() {
-	// const { secret: roomSecret, hostId: roomHost } = loaderData;
 	const context = useOutletContext<{
 		user: User;
 		secret: string;
@@ -207,7 +205,17 @@ export default function RoomPage() {
 
 		const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
 
-		const wsUrl = `${proto}//${API_HOST}/games/${roomId}/ws?playerId=${user.id}&playerName=${user.name}`;
+		const host = window.location.hostname;
+		const port = window.location.port;
+		const fullHost =
+			host === "localhost" && port === "5173"
+				? "localhost:8787"
+				: port
+					? `${host}:${port}`
+					: host;
+		const prefix = host === "localhost" && port === "5173" ? "" : "/api";
+
+		const wsUrl = `${proto}//${fullHost}${prefix}/games/${roomId}/ws?playerId=${user.id}&playerName=${user.name}`;
 
 		const socket = new WebSocket(wsUrl);
 		ws.current = socket;

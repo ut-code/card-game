@@ -24,7 +24,7 @@
 		"check:lint": "bunx --bun biome lint .",
 		"check:type": "tsc --noEmit",
 		"build": "cd ./apps/frontend && bun run build",
-		"deploy": "cd ./apps/backend && bun run deploy"
+		"deploy": "cd ./apps/frontend && bun run deploy"
 	},
 	"type": "module",
 	"workspaces": [

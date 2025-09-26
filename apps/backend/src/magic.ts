@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import type { Env } from "hono/types";
 import { type Mission, missions } from "./mission";
 
 const DEFAULT_BOARD_SIZE = 3;
@@ -70,7 +71,7 @@ export class Magic extends DurableObject {
 	gameState: GameState | undefined = undefined;
 	sessions: Session[] = [];
 
-	constructor(ctx: DurableObjectState, env: unknown) {
+	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
 		this.ctx.blockConcurrencyWhile(async () => {
 			this.gameState = await this.ctx.storage.get<GameState>("gameState");

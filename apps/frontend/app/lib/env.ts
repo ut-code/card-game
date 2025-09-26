@@ -1,5 +1,5 @@
 const IS_DEV = import.meta.env.DEV;
 
-const API_HOST = IS_DEV ? "localhost:8787" : `${import.meta.env.API_URL}/api`;
+const API_BASE_URL = IS_DEV ? "http://localhost:8787" : "/api";
 
-export { API_HOST };
+export { API_BASE_URL };
