@@ -2,8 +2,13 @@ import { DurableObject } from "cloudflare:workers";
 import type { Env } from "hono/types";
 import { type Mission, missions } from "./mission";
 
+// 定数
 const DEFAULT_BOARD_SIZE = 3;
+const DEFAULT_TIME_LIMIT_MS = 10000;
+// timeout
+let timeout: ReturnType<typeof setTimeout>;
 
+// 型
 export type MoveAction = {
 	x: number;
 	y: number;
@@ -14,7 +19,8 @@ export type MoveAction = {
 
 export type Rule =
 	| { rule: "negativeDisabled"; state: boolean }
-	| { rule: "boardSize"; state: number };
+	| { rule: "boardSize"; state: number }
+	| { rule: "timeLimit"; state: number };
 
 export type Operation = "add" | "sub";
 
@@ -52,13 +58,16 @@ export type GameState = {
 	rules: {
 		negativeDisabled: boolean;
 		boardSize: number;
+		timeLimit: number;
 	};
+	timeLimitUnix: number;
 };
 
 export type MessageType =
 	| { type: "makeMove"; payload: MoveAction }
 	| { type: "setReady"; payload?: undefined }
 	| { type: "changeRule"; payload: Rule }
+	| { type: "pass"; payload?: undefined }
 	| { type: "backToLobby"; payload?: undefined }
 	| { type: "removePlayer"; payload?: undefined };
 
@@ -139,6 +148,9 @@ export class Magic extends DurableObject {
 					case "removePlayer":
 						await this.removePlayer(playerId);
 						break;
+					case "pass":
+						await this.pass();
+						break;
 					default:
 						throw new Error(`Unhandled message type: ${type}`);
 				}
@@ -188,7 +200,9 @@ export class Magic extends DurableObject {
 			rules: {
 				negativeDisabled: false,
 				boardSize: DEFAULT_BOARD_SIZE,
+				timeLimit: DEFAULT_TIME_LIMIT_MS / 1000,
 			},
+			timeLimitUnix: Date.now() + DEFAULT_TIME_LIMIT_MS,
 		};
 		await this.ctx.storage.put("gameState", this.gameState);
 		this.broadcast({ type: "state", payload: this.gameState });
@@ -318,6 +332,12 @@ export class Magic extends DurableObject {
 			this.gameState.missions[playerId] = this.getRandomMission();
 		}
 		this.gameState.status = "playing";
+		this.gameState.timeLimitUnix =
+			Date.now() + this.gameState.rules.timeLimit * 1000;
+		clearTimeout(timeout);
+		timeout = setTimeout(() => {
+			this.pass();
+		}, this.gameState.rules.timeLimit * 1000);
 
 		await this.ctx.storage.put("gameState", this.gameState);
 		this.broadcast({ type: "state", payload: this.gameState });
@@ -409,7 +429,13 @@ export class Magic extends DurableObject {
 				this.gameState.playerStatus[playerId] = "finished";
 			});
 		}
-
+		this.gameState.timeLimitUnix =
+			Date.now() + this.gameState.rules.timeLimit * 1000;
+		clearTimeout(timeout);
+		if (!this.gameState.winners)
+			timeout = setTimeout(() => {
+				this.pass();
+			}, this.gameState.rules.timeLimit * 1000);
 		await this.ctx.storage.put("gameState", this.gameState);
 		this.broadcast({ type: "state", payload: this.gameState });
 	}
@@ -429,22 +455,6 @@ export class Magic extends DurableObject {
 			this.broadcast({ type: "state", payload: this.gameState });
 		}
 	}
-
-	async changeRule(payload: Rule) {
-		if (!this.gameState) return;
-		if (payload.rule === "negativeDisabled") {
-			this.gameState.rules.negativeDisabled = payload.state;
-		} else if (payload.rule === "boardSize") {
-			this.gameState.rules.boardSize = payload.state;
-			this.gameState.board = Array(payload.state)
-				.fill(null)
-				.map(() => Array(payload.state).fill(null));
-		}
-		console.log(this.gameState.rules);
-		await this.ctx.storage.put("gameState", this.gameState);
-		this.broadcast({ type: "state", payload: this.gameState });
-	}
-
 	async backToLobby(playerId: string) {
 		if (!this.gameState) return;
 		this.gameState.playerStatus[playerId] = "preparing";
@@ -494,6 +504,40 @@ export class Magic extends DurableObject {
 
 		console.log(this.gameState);
 		await this.ctx.storage.delete("gameState");
+		this.broadcast({ type: "state", payload: this.gameState });
+	}
+
+	async changeRule(payload: Rule) {
+		if (!this.gameState) return;
+		if (payload.rule === "negativeDisabled") {
+			this.gameState.rules.negativeDisabled = payload.state;
+		} else if (payload.rule === "boardSize") {
+			this.gameState.rules.boardSize = payload.state;
+			this.gameState.board = Array(payload.state)
+				.fill(null)
+				.map(() => Array(payload.state).fill(null));
+		} else if (payload.rule === "timeLimit") {
+			this.gameState.rules.timeLimit = payload.state;
+		}
+		console.log(this.gameState.rules);
+		await this.ctx.storage.put("gameState", this.gameState);
+		this.broadcast({ type: "state", payload: this.gameState });
+	}
+
+	async pass() {
+		if (!this.gameState) return;
+		if (this.gameState.turn === this.gameState.players.length - 1) {
+			this.gameState.round += 1;
+		}
+		this.gameState.turn =
+			(this.gameState.turn + 1) % this.gameState.players.length;
+		this.gameState.timeLimitUnix =
+			Date.now() + this.gameState.rules.timeLimit * 1000;
+		clearTimeout(timeout);
+		timeout = setTimeout(() => {
+			this.pass();
+		}, this.gameState.rules.timeLimit * 1000);
+		await this.ctx.storage.put("gameState", this.gameState);
 		this.broadcast({ type: "state", payload: this.gameState });
 	}
 

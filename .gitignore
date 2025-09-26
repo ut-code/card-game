@@ -3,6 +3,7 @@ node_modules
 
 # dotenv environment variable files
 .env
+.direnv
 
 # target
 .react-router
