@@ -1,7 +1,8 @@
 import type { User } from "@apps/backend";
 import { useEffect, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router";
-import { client } from "../../lib/client";
+import { client } from "~/lib/client";
+import { IS_DEV } from "~/lib/env";
 
 type Room = {
 	id: string;
@@ -28,6 +29,7 @@ export default function Lobby() {
 	];
 
 	useEffect(() => {
+		if (!IS_DEV) return;
 		const fetchRooms = async () => {
 			const res = await client.rooms.$get();
 			if (res.ok) {
@@ -55,8 +57,9 @@ export default function Lobby() {
 		});
 		if (res.ok) {
 			const newRoom = await res.json();
-			setRooms([...rooms, newRoom]);
-			setNewRoomName("");
+			// setRooms([...rooms, newRoom]);
+			// setNewRoomName("");
+			navigate(`/magic-square/room/${newRoom.id}`);
 		}
 	};
 
@@ -76,7 +79,7 @@ export default function Lobby() {
 			json: { secret: roomSecret },
 		});
 		const data = await res.json();
-		if (res.ok && "id" in data) {
+		if (res.ok) {
 			navigate(`/magic-square/room/${data.id}`);
 		} else {
 			setJoinError("Failed to join room");
@@ -232,28 +235,30 @@ export default function Lobby() {
 						</div>
 					</div>
 				</dialog>
-				<div>
-					<h2 className="text-2xl font-bold mb-4">Available Rooms</h2>
-					<div className="space-y-4">
-						{rooms.map((room) => (
-							<div key={room.id} className="card bg-base-100 shadow-md">
-								<div className="card-body">
-									<h3 className="text-xl">{room.name}</h3>
-									<p>{room.users.length} players</p>
-									<div className="card-actions justify-end">
-										<button
-											className="btn btn-secondary"
-											type="button"
-											onClick={() => handleJoinRoom(room.id)}
-										>
-											Join without Secret
-										</button>
+				{IS_DEV && (
+					<div>
+						<h2 className="text-2xl font-bold mb-4">Available Rooms (Debug)</h2>
+						<div className="space-y-4">
+							{rooms.map((room) => (
+								<div key={room.id} className="card bg-base-100 shadow-md">
+									<div className="card-body">
+										<h3 className="text-xl">{room.name}</h3>
+										<p>{room.users.length} players</p>
+										<div className="card-actions justify-end">
+											<button
+												className="btn btn-secondary"
+												type="button"
+												onClick={() => handleJoinRoom(room.id)}
+											>
+												Join without Secret
+											</button>
+										</div>
 									</div>
 								</div>
-							</div>
-						))}
+							))}
+						</div>
 					</div>
-				</div>
+				)}
 			</div>
 		</div>
 	);
