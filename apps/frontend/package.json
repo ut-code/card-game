@@ -5,7 +5,7 @@
 	"scripts": {
 		"build": "react-router build",
 		"cf-typegen": "wrangler types",
-		"deploy": "bun run build && wrangler deploy ./build/server/index.js -c ./wrangler.jsonc",
+		"deploy": "bun run build && wrangler deploy ./workers/app.ts -c ./wrangler.jsonc",
 		"dev": "react-router dev",
 		"dev:wrangler": "bun run build && wrangler dev",
 		"postinstall": "npm run cf-typegen",
