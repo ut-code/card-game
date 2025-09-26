@@ -66,6 +66,7 @@ export type GameState = {
 export type MessageType =
 	| { type: "makeMove"; payload: MoveAction }
 	| { type: "setReady"; payload?: undefined }
+	| { type: "cancelReady"; payload?: undefined }
 	| { type: "changeRule"; payload: Rule }
 	| { type: "pass"; payload?: undefined }
 	| { type: "backToLobby"; payload?: undefined }
@@ -138,6 +139,9 @@ export class Magic extends DurableObject {
 						break;
 					case "setReady":
 						await this.setReady(playerId);
+						break;
+					case "cancelReady":
+						await this.cancelReady(playerId);
 						break;
 					case "changeRule":
 						await this.changeRule(payload);
@@ -442,6 +446,10 @@ export class Magic extends DurableObject {
 
 	async setReady(player: string) {
 		if (!this.gameState) return;
+		if (this.gameState.playerStatus[player] !== "preparing") {
+			console.error("Player not in preparing state:", player);
+			return;
+		}
 		this.gameState.playerStatus[player] = "ready";
 		if (
 			this.gameState.players.length >= 2 &&
@@ -454,6 +462,16 @@ export class Magic extends DurableObject {
 			await this.ctx.storage.put("gameState", this.gameState);
 			this.broadcast({ type: "state", payload: this.gameState });
 		}
+	}
+	async cancelReady(player: string) {
+		if (!this.gameState) return;
+		if (this.gameState.playerStatus[player] !== "ready") {
+			console.error("Player not in ready state:", player);
+			return;
+		}
+		this.gameState.playerStatus[player] = "preparing";
+		await this.ctx.storage.put("gameState", this.gameState);
+		this.broadcast({ type: "state", payload: this.gameState });
 	}
 	async backToLobby(playerId: string) {
 		if (!this.gameState) return;

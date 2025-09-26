@@ -305,7 +305,11 @@ export default function RoomPage() {
 	};
 
 	const handleReadyClick = () => {
-		sendWsMessage({ type: "setReady" });
+		if (myStatus === "ready") {
+			sendWsMessage({ type: "cancelReady" });
+		} else {
+			sendWsMessage({ type: "setReady" });
+		}
 	};
 
 	const handleRuleChange = (rule: Rule) => {
@@ -371,11 +375,19 @@ export default function RoomPage() {
 						>
 							<span className="font-medium">{gameState.names[playerId]}</span>
 							<span
-								className={`rounded-full px-3 py-1 text-sm font-semibold ${gameState.playerStatus[playerId] === "ready" ? "bg-green-500 text-white" : "bg-gray-300 text-gray-700"}`}
+								className={`rounded-full px-3 py-1 text-sm font-semibold ${
+									gameState.playerStatus[playerId] === "ready"
+										? "bg-green-500 text-white"
+										: gameState.playerStatus[playerId] === "error"
+											? "bg-red-500 text-white"
+											: "bg-gray-300 text-gray-700"
+								}`}
 							>
 								{gameState.playerStatus[playerId] === "ready"
 									? "Ready!"
-									: "Preparing..."}
+									: gameState.playerStatus[playerId] === "error"
+										? "Error"
+										: "Preparing..."}
 							</span>
 						</li>
 					))}
