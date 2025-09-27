@@ -651,7 +651,7 @@ export class Magic extends DurableObject {
 				for (let j = 0; j < this.gameState.rules.boardSize; j++) {
 					if (i === 0) {
 						nullinary.push(
-							this.gameState.board[j][this.gameState.rules.boardSize - j - 1],
+							this.gameState.board[j][j],
 						);
 					} else {
 						nullinary.push(
@@ -663,7 +663,7 @@ export class Magic extends DurableObject {
 				if (this.isWinner(diaary, mission)) {
 					for (let j = 0; j < this.gameState.rules.boardSize; j++) {
 						if (i === 0) {
-							matrix[j][this.gameState.rules.boardSize - j - 1] = true;
+							matrix[j][j] = true;
 						} else {
 							matrix[this.gameState.rules.boardSize - j - 1][j] = true;
 						}
@@ -689,8 +689,9 @@ export class Magic extends DurableObject {
 				}
 				if (hikaku > 3) {
 					for (let i = 0; i < nullinary.length; i++) {
-						matrix[Math.floor(i / mission.number)][i % mission.number] =
-							this.multi(nullinary[i], mission.number);
+						matrix[Math.floor(i / this.gameState.rules.boardSize)][
+							i % this.gameState.rules.boardSize
+						] = this.multi(nullinary[i], mission.number);
 					}
 				}
 			}
@@ -703,8 +704,9 @@ export class Magic extends DurableObject {
 				}
 				if (hikaku > 3) {
 					for (let i = 0; i < nullinary.length; i++) {
-						matrix[Math.floor(i / mission.number)][i % mission.number] =
-							this.prime(nullinary[i]);
+						matrix[Math.floor(i / this.gameState.rules.boardSize)][
+							i % this.gameState.rules.boardSize
+						] = this.prime(nullinary[i]);
 					}
 				}
 			}
