@@ -52,6 +52,20 @@ export async function clientLoader({ request }: ClientLoaderFunctionArgs) {
 		}
 	}
 
+	if (url.pathname === "/logic-puzzle/matching") {
+		try {
+			const res = await client.users.me.$get({});
+
+			if (!res.ok) throw new Error("Failed to fetch user.", { cause: res });
+			const user = await res.json();
+
+			return user;
+		} catch (e) {
+			console.error(e);
+			return null;
+		}
+	}
+
 	throw new Error("Invalid route");
 }
 
