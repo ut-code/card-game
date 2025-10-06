@@ -90,7 +90,7 @@ export class Matching extends DurableObject<Env> {
 		ws.addEventListener("close", () => this.removeUser(session));
 		ws.addEventListener("error", () => this.removeUser(session));
 
-		ws.send(JSON.stringify({ type: "addUser", payload: this.waitingUser }));
+		ws.send(JSON.stringify({ type: "userChange", payload: this.waitingUser }));
 
 		if (this.waitingUser.length === 2) {
 			const roomName = generateRandomString(6);
@@ -130,7 +130,7 @@ export class Matching extends DurableObject<Env> {
 
 			try {
 				// データベース操作をトランザクションで囲む
-				const roomSecret = await this.db.transaction(async (tx) => {
+				const { secret } = await this.db.transaction(async (tx) => {
 					const roomName = generateRandomString(6);
 					const secret = randomInt(100000, 999999).toString();
 
@@ -150,13 +150,13 @@ export class Matching extends DurableObject<Env> {
 						secret: secret,
 					});
 
-					return secret;
+					return { secret };
 				});
 
 				// マッチした2人のユーザーにのみ通知
 				const message = JSON.stringify({
 					type: "goRoom",
-					payload: { secret: roomSecret },
+					payload: { secret },
 				});
 				this.sessions
 					.filter((s) => matchedUsers.includes(s.playerId))

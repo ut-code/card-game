@@ -6,25 +6,9 @@ export default function matching() {
 	const [userId, setUserId] = useState<string>("");
 	const [userName, setUserName] = useState<string>("");
 	const [waitingUser, setWaitingUser] = useState<string[]>([]);
-	const [roomSecret, setRoomSecret] = useState<string>("");
 	const ws = useRef<WebSocket | null>(null);
 
 	const navigate = useNavigate();
-
-	const handleJoinWithSecret = async () => {
-		if (!roomSecret) return;
-		const res = await client.rooms.join.$post({
-			json: { secret: roomSecret },
-		});
-		const data = await res.json();
-		if (res.ok && "id" in data) {
-			navigate(`/logic-puzzle/room/${data.id}`);
-		} else if ("error" in data) {
-			console.log(data.error);
-		} else {
-			console.log("Failed to join room");
-		}
-	};
 
 	console.log("waitingUser:", waitingUser);
 
@@ -47,11 +31,29 @@ export default function matching() {
 
 		const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
 		// TODO: This should be configurable via environment variables
-		const host = "localhost:8787";
-		const wsUrl = `${proto}//${host}/api/matching/ws?playerId=${userId}&playerName=${userName}`;
+		const host = window.location.hostname;
+		const port = window.location.port;
+		const fullHost =
+			host === "localhost" && port === "5173"
+				? "localhost:8787"
+				: port
+					? `${host}:${port}`
+					: host;
+		const prefix = host === "localhost" && port === "5173" ? "" : "/api";
+		const wsUrl = `${proto}//${fullHost}${prefix}/matching/ws?playerId=${userId}&playerName=${userName}`;
 
 		const socket = new WebSocket(wsUrl);
 		ws.current = socket;
+
+		const handleJoinWithSecret = async (secret: string) => {
+			const res = await client.rooms.join.$post({
+				json: { secret },
+			});
+			const data = await res.json();
+			if (res.ok && "id" in data) {
+				navigate(`/logic-puzzle/room/${data.id}`);
+			}
+		};
 
 		socket.onopen = () => {
 			console.log("[WS] Connected to server.");
@@ -69,7 +71,7 @@ export default function matching() {
 				console.log(message.payload);
 			}
 			if (message.type === "goRoom") {
-				setRoomSecret(message.payload);
+				handleJoinWithSecret(message.payload.secret);
 			}
 			if (message.error) {
 				console.error("[WS] Server error:", message.error);
@@ -77,7 +79,7 @@ export default function matching() {
 		};
 
 		return () => socket.close();
-	}, [userId, userName]);
+	}, [userId, userName, navigate]);
 
 	useEffect(() => {
 		if (waitingUser.length === 2 && waitingUser[0] === userId) {
