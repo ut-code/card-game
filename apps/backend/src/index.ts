@@ -126,6 +126,20 @@ const apiApp = new Hono<{
 
 		return c.json(newUser, 201);
 	})
+	.patch("/users/me", authMiddleware, async (c) => {
+		const user = c.get("user");
+		const db = c.get("db");
+		const { newName } = await c.req.json<{ newName: string }>();
+		if (!newName) {
+			throw new HTTPException(400, { message: "New name is required" });
+		}
+		const [updatedUser] = await db
+			.update(schema.users)
+			.set({ name: newName })
+			.where(eq(schema.users.id, user.id))
+			.returning();
+		return c.json(updatedUser, 200);
+	})
 
 	// Room routes
 	.get("/rooms", async (c) => {
