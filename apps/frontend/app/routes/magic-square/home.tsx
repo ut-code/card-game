@@ -13,7 +13,6 @@ type Room = {
 export default function Lobby() {
 	const me = useOutletContext<User | null>();
 	const [user, setUser] = useState<User | null>(me ?? null);
-	const [userName, setUserName] = useState("");
 	const [rooms, setRooms] = useState<Room[]>([]);
 	const [newRoomName, setNewRoomName] = useState("");
 	const [roomSecret, setRoomSecret] = useState("");
@@ -40,15 +39,19 @@ export default function Lobby() {
 		fetchRooms();
 	}, []);
 
-	const handleCreateUser = async () => {
-		if (!userName) return;
-		const res = await client.users.create.$post({
-			json: { name: userName },
-		});
-		const data = await res.json();
-		const createdAt = data.createdAt ? new Date(data.createdAt) : null;
-		setUser({ ...data, createdAt });
-	};
+	useEffect(() => {
+		if (user) return;
+		const newUserName = `player-${Math.floor(Math.random() * 100000)}`;
+		const handleCreateUser = async () => {
+			const res = await client.users.create.$post({
+				json: { name: newUserName },
+			});
+			const data = await res.json();
+			const createdAt = data.createdAt ? new Date(data.createdAt) : null;
+			setUser({ ...data, createdAt });
+		};
+		handleCreateUser();
+	}, [user]);
 
 	const handleCreateRoom = async () => {
 		if (!newRoomName) return;
@@ -57,8 +60,6 @@ export default function Lobby() {
 		});
 		if (res.ok) {
 			const newRoom = await res.json();
-			// setRooms([...rooms, newRoom]);
-			// setNewRoomName("");
 			navigate(`/magic-square/room/${newRoom.id}`);
 		}
 	};
@@ -86,33 +87,7 @@ export default function Lobby() {
 		}
 	};
 
-	if (!user || !("name" in user)) {
-		return (
-			<div className="p-8 flex flex-col items-center">
-				<h1 className="text-2xl font-bold mb-4">Create User</h1>
-				<div className="card w-96 bg-base-100 shadow-xl">
-					<div className="card-body">
-						<input
-							type="text"
-							placeholder="Enter your name"
-							className="input input-bordered w-full max-w-xs"
-							value={userName}
-							onChange={(e) => setUserName(e.target.value)}
-						/>
-						<div className="card-actions justify-end mt-4">
-							<button
-								className="btn btn-primary"
-								type="button"
-								onClick={handleCreateUser}
-							>
-								Create
-							</button>
-						</div>
-					</div>
-				</div>
-			</div>
-		);
-	}
+	if (!user) return null;
 
 	return (
 		<div className="p-8">
