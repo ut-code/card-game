@@ -14,11 +14,14 @@ export default function Lobby() {
 	const me = useOutletContext<User | null>();
 	const [user, setUser] = useState<User | null>(me ?? null);
 	const [rooms, setRooms] = useState<Room[]>([]);
+	const [userName, setUserName] = useState(user?.name ?? "");
+	const [newUserName, setNewUserName] = useState("");
 	const [newRoomName, setNewRoomName] = useState("");
 	const [roomSecret, setRoomSecret] = useState("");
 	const [joinError, setJoinError] = useState<string | null>(null);
 	const navigate = useNavigate();
 	const [step, setStep] = useState(0);
+	const [isEditingName, setIsEditingName] = useState(false);
 
 	const instructions = [
 		"盤上に数字を置いていき、自分のミッションを誰よりも早く達成することを狙うゲームです。",
@@ -49,6 +52,7 @@ export default function Lobby() {
 			const data = await res.json();
 			const createdAt = data.createdAt ? new Date(data.createdAt) : null;
 			setUser({ ...data, createdAt });
+			setUserName(data.name);
 		};
 		handleCreateUser();
 	}, [user]);
@@ -61,6 +65,19 @@ export default function Lobby() {
 		if (res.ok) {
 			const newRoom = await res.json();
 			navigate(`/magic-square/room/${newRoom.id}`);
+		}
+	};
+
+	const handleChangeName = async () => {
+		if (!newUserName) return;
+		setUserName(newUserName);
+		const res = await client.users.me.$patch({
+			json: { newName: newUserName },
+		});
+		if (res.ok) {
+			const data = await res.json();
+			const createdAt = data.createdAt ? new Date(data.createdAt) : null;
+			setUser({ ...data, createdAt });
 		}
 	};
 
@@ -92,7 +109,38 @@ export default function Lobby() {
 	return (
 		<div className="p-8">
 			<h1 className="text-3xl font-bold mb-4">Lobby</h1>
-			<p className="mb-8">Welcome, {user.name}!</p>
+			{isEditingName ? (
+				<div className="flex items-center gap-2 mb-8">
+					<input
+						type="text"
+						placeholder="New name"
+						className="input input-bordered w-full max-w-xs"
+						value={newUserName}
+						onChange={(e) => setNewUserName(e.target.value)}
+					/>
+					<button
+						className="btn btn-primary"
+						onClick={() => {
+							handleChangeName();
+							setIsEditingName(false);
+						}}
+						type="button"
+					>
+						Save
+					</button>
+				</div>
+			) : (
+				<div className="mb-8 flex gap-4 items-center">
+					<p className="mb-2">Welcome, {userName}!</p>
+					<button
+						className="btn btn-sm btn-outline"
+						onClick={() => setIsEditingName(true)}
+						type="button"
+					>
+						Change Name
+					</button>
+				</div>
+			)}
 
 			<div className="grid grid-cols-1 md:grid-cols-2 gap-8">
 				<div className="space-y-8">
