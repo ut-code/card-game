@@ -1,59 +1,4 @@
-import {
-	type ClientLoaderFunctionArgs,
-	Outlet,
-	redirect,
-	useLoaderData,
-} from "react-router";
-import { client } from "../../lib/client";
-
-export async function clientLoader({ request }: ClientLoaderFunctionArgs) {
-	const url = new URL(request.url);
-	const pathname = url.pathname;
-
-	const roomMatch = pathname.match(/^\/magic-square\/room\/([^/]+)/);
-
-	if (roomMatch) {
-		const roomId = roomMatch[1];
-
-		const [userRes, roomRes, roomSecretRes] = await Promise.all([
-			client.users.me.$get(),
-			client.rooms[":roomId"].$get({ param: { roomId } }),
-			client.rooms[":roomId"].secret.$get({
-				param: { roomId },
-			}),
-		]);
-
-		if (!userRes.ok || !roomRes.ok || !roomSecretRes.ok) {
-			return redirect("/magic-square");
-		}
-
-		const user = await userRes.json();
-		const roomData = await roomRes.json();
-		const roomSecretData = await roomSecretRes.json();
-
-		if (!roomData.users.includes(user.id)) {
-			return redirect("/magic-square");
-		}
-
-		return { user, secret: roomSecretData.secret, hostId: roomData.hostId };
-	}
-
-	if (url.pathname === "/magic-square") {
-		try {
-			const res = await client.users.me.$get({});
-
-			if (!res.ok) throw new Error("Failed to fetch user.", { cause: res });
-			const user = await res.json();
-
-			return user;
-		} catch (e) {
-			console.error(e);
-			return null;
-		}
-	}
-
-	throw new Error("Invalid route");
-}
+import { Outlet } from "react-router";
 
 export function HydrateFallback() {
 	return (
@@ -64,7 +9,5 @@ export function HydrateFallback() {
 }
 
 export default function LogicPuzzleLayout() {
-	const context = useLoaderData<typeof clientLoader>();
-
-	return <Outlet context={context} />;
+	return <Outlet />;
 }
