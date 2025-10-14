@@ -1,16 +1,49 @@
 /** biome-ignore-all lint/a11y/noStaticElementInteractions: TODO */
 /** biome-ignore-all lint/suspicious/noArrayIndexKey: TODO */
 /** biome-ignore-all lint/a11y/useKeyWithClickEvents: TODO */
-import type {
-	GameState,
-	MessageType,
-	Operation,
-	Rule,
-	User,
-} from "@apps/backend";
+import type { GameState, MessageType, Operation, Rule } from "@apps/backend";
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useOutletContext, useParams } from "react-router";
+import {
+	type ClientLoaderFunctionArgs,
+	redirect,
+	useLoaderData,
+	useNavigate,
+	useParams,
+} from "react-router";
 import { client } from "../../lib/client";
+
+export async function clientLoader({ params }: ClientLoaderFunctionArgs) {
+	const roomId = params.roomId;
+	if (!roomId) throw new Error("Room ID is required");
+
+	const [userRes, roomRes, roomSecretRes] = await Promise.all([
+		client.users.me.$get(),
+		client.rooms[":roomId"].$get({ param: { roomId } }),
+		client.rooms[":roomId"].secret.$get({
+			param: { roomId },
+		}),
+	]);
+
+	if (!userRes.ok || !roomRes.ok || !roomSecretRes.ok) {
+		return redirect("/magic-square");
+	}
+
+	const user = await userRes.json();
+	const roomData = await roomRes.json();
+	const roomSecretData = await roomSecretRes.json();
+
+	const createdAt = user.createdAt ? new Date(user.createdAt) : null;
+
+	if (!roomData.users.includes(user.id)) {
+		return redirect("/magic-square");
+	}
+
+	return {
+		user: { ...user, createdAt },
+		secret: roomSecretData.secret,
+		hostId: roomData.hostId,
+	};
+}
 
 // --- Game Components ---
 
@@ -185,16 +218,11 @@ function TurnDisplay({
 }
 
 export default function RoomPage() {
-	const context = useOutletContext<{
-		user: User;
-		secret: string;
-		hostId: string;
-	} | null>();
-	if (!context) {
-		throw new Error("Context is null");
-	}
-
-	const { user, secret: roomSecret, hostId: roomHost } = context;
+	const {
+		user,
+		secret: roomSecret,
+		hostId: roomHost,
+	} = useLoaderData<typeof clientLoader>();
 
 	const { roomId } = useParams();
 	const navigate = useNavigate();

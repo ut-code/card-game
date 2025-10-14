@@ -1,6 +1,6 @@
 import type { User } from "@apps/backend";
 import { useEffect, useState } from "react";
-import { useNavigate, useOutletContext } from "react-router";
+import { useLoaderData, useNavigate } from "react-router";
 import { client } from "~/lib/client";
 import { IS_DEV } from "~/lib/env";
 
@@ -10,8 +10,23 @@ type Room = {
 	users: string[];
 };
 
+export async function clientLoader() {
+	try {
+		const res = await client.users.me.$get({});
+
+		if (!res.ok) throw new Error("Failed to fetch user.", { cause: res });
+		const user = await res.json();
+		const createdAt = user.createdAt ? new Date(user.createdAt) : null;
+
+		return { ...user, createdAt };
+	} catch (e) {
+		console.error(e);
+		return null;
+	}
+}
+
 export default function Lobby() {
-	const me = useOutletContext<User | null>();
+	const me = useLoaderData<typeof clientLoader>();
 	const [user, setUser] = useState<User | null>(me ?? null);
 	const [rooms, setRooms] = useState<Room[]>([]);
 	const [userName, setUserName] = useState(user?.name ?? "");
