@@ -73,9 +73,10 @@ export default function Lobby() {
 	}, [user]);
 
 	const handleCreateRoom = async () => {
-		if (!newRoomName) return;
+		const roomName =
+			newRoomName || `room-${Math.floor(Math.random() * 100000)}`;
 		const res = await client.rooms.create.$post({
-			json: { name: newRoomName },
+			json: { name: roomName },
 		});
 		if (res.ok) {
 			const newRoom = await res.json();
@@ -184,11 +185,10 @@ export default function Lobby() {
 							>
 								<input
 									type="text"
-									placeholder="Room name"
+									placeholder="Room name (optional)"
 									className="input input-bordered w-full"
 									value={newRoomName}
 									onChange={(e) => setNewRoomName(e.target.value)}
-									required
 								/>
 								<div className="card-actions justify-end mt-4">
 									<button className="btn btn-primary" type="submit">
