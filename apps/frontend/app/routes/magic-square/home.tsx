@@ -86,36 +86,48 @@ export default function Lobby() {
 	const handleChangeName = async () => {
 		if (!newUserName) return;
 		setUserName(newUserName);
-		const res = await client.users.me.$patch({
-			json: { newName: newUserName },
-		});
-		if (res.ok) {
-			const data = await res.json();
-			const createdAt = data.createdAt ? new Date(data.createdAt) : null;
-			setUser({ ...data, createdAt });
+		try {
+			const res = await client.users.me.$patch({
+				json: { newName: newUserName },
+			});
+			if (res.ok) {
+				const data = await res.json();
+				const createdAt = data.createdAt ? new Date(data.createdAt) : null;
+				setUser({ ...data, createdAt });
+			}
+		} catch (e) {
+			console.error(e);
 		}
 	};
 
 	const handleJoinRoom = async (roomId: string) => {
-		const res = await client.rooms[":roomId"].join.$post({
-			param: { roomId },
-		});
-		if (res.ok) {
-			navigate(`/magic-square/room/${roomId}`);
+		try {
+			const res = await client.rooms[":roomId"].join.$post({
+				param: { roomId },
+			});
+			if (res.ok) {
+				navigate(`/magic-square/room/${roomId}`);
+			}
+		} catch (e) {
+			console.error(e);
 		}
 	};
 
 	const handleJoinWithSecret = async () => {
 		if (!roomSecret) return;
 		setJoinError(null);
-		const res = await client.rooms.join.$post({
-			json: { secret: roomSecret },
-		});
-		const data = await res.json();
-		if (res.ok) {
-			navigate(`/magic-square/room/${data.id}`);
-		} else {
-			setJoinError("Failed to join room");
+		try {
+			const res = await client.rooms.join.$post({
+				json: { secret: roomSecret },
+			});
+			if (res.ok) {
+				const data = await res.json();
+				navigate(`/magic-square/room/${data.id}`);
+			} else {
+				setJoinError("Failed to join room");
+			}
+		} catch (e) {
+			console.error(e);
 		}
 	};
 
@@ -125,25 +137,26 @@ export default function Lobby() {
 		<div className="p-8">
 			<h1 className="text-3xl font-bold mb-4">Lobby</h1>
 			{isEditingName ? (
-				<div className="flex items-center gap-2 mb-8">
+				<form
+					className="flex items-center gap-2 mb-8"
+					onSubmit={(e) => {
+						e.preventDefault();
+						handleChangeName();
+						setIsEditingName(false);
+					}}
+				>
 					<input
 						type="text"
 						placeholder="New name"
 						className="input input-bordered w-full max-w-xs"
 						value={newUserName}
 						onChange={(e) => setNewUserName(e.target.value)}
+						required
 					/>
-					<button
-						className="btn btn-primary"
-						onClick={() => {
-							handleChangeName();
-							setIsEditingName(false);
-						}}
-						type="button"
-					>
+					<button className="btn btn-primary" type="submit">
 						Save
 					</button>
-				</div>
+				</form>
 			) : (
 				<div className="mb-8 flex gap-4 items-center">
 					<p className="mb-2">Welcome, {userName}!</p>
@@ -162,30 +175,39 @@ export default function Lobby() {
 					<div>
 						<h2 className="text-2xl font-bold mb-4">Create a Room</h2>
 						<div className="card bg-base-100 shadow-xl">
-							<div className="card-body">
+							<form
+								className="card-body"
+								onSubmit={(e) => {
+									e.preventDefault();
+									handleCreateRoom();
+								}}
+							>
 								<input
 									type="text"
 									placeholder="Room name"
 									className="input input-bordered w-full"
 									value={newRoomName}
 									onChange={(e) => setNewRoomName(e.target.value)}
+									required
 								/>
 								<div className="card-actions justify-end mt-4">
-									<button
-										className="btn btn-primary"
-										type="button"
-										onClick={handleCreateRoom}
-									>
+									<button className="btn btn-primary" type="submit">
 										Create Room
 									</button>
 								</div>
-							</div>
+							</form>
 						</div>
 					</div>
 					<div>
 						<h2 className="text-2xl font-bold mb-4">Join with Secret</h2>
 						<div className="card bg-base-100 shadow-xl">
-							<div className="card-body">
+							<form
+								className="card-body"
+								onSubmit={(e) => {
+									e.preventDefault();
+									handleJoinWithSecret();
+								}}
+							>
 								{joinError && (
 									<div className="alert alert-error shadow-lg mb-4">
 										<div>
@@ -199,17 +221,14 @@ export default function Lobby() {
 									className="input input-bordered w-full"
 									value={roomSecret}
 									onChange={(e) => setRoomSecret(e.target.value)}
+									required
 								/>
 								<div className="card-actions justify-end mt-4">
-									<button
-										className="btn btn-secondary"
-										type="button"
-										onClick={handleJoinWithSecret}
-									>
+									<button className="btn btn-secondary" type="submit">
 										Join Room
 									</button>
 								</div>
-							</div>
+							</form>
 						</div>
 					</div>
 				</div>

@@ -10,7 +10,7 @@ import {
 	useNavigate,
 	useParams,
 } from "react-router";
-import { client } from "../../lib/client";
+import { client } from "~/lib/client";
 
 export async function clientLoader({ params }: ClientLoaderFunctionArgs) {
 	const roomId = params.roomId;
