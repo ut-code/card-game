@@ -33,7 +33,8 @@ export type GameState = {
 			| "ready"
 			| "playing"
 			| "finished"
-			| "error";
+			| "error"
+			| "watching";
 	};
 	names: {
 		[playerId: string]: string;
@@ -238,7 +239,15 @@ export class Magic extends DurableObject {
 					}
 					break;
 				case "playing":
-					console.error("Game already started, cannot join now.");
+					//   console.error("Game already started, cannot join now.");
+					if (!this.gameState.players.includes(playerId)) {
+						this.gameState.players.push(playerId);
+						this.gameState.names[playerId] = playerName;
+						this.gameState.playerStatus[playerId] = "watching";
+
+						await this.ctx.storage.put("gameState", this.gameState);
+						this.broadcast({ type: "state", payload: this.gameState });
+					}
 					break;
 				case "paused":
 					if (this.gameState.players.includes(playerId)) {
@@ -274,12 +283,14 @@ export class Magic extends DurableObject {
 					this.gameState.playerStatus[playerId] = "preparing";
 					break;
 				case "playing":
-					throw new Error("Game already started, but trying to reconnect.");
+					this.gameState.playerStatus[playerId] = "watching";
+					break;
+				//   throw new Error("Game already started, but trying to reconnect.");
 				case "paused":
 					this.gameState.playerStatus[playerId] = "playing";
 					if (
 						Object.values(this.gameState.playerStatus).every(
-							(status) => status === "playing",
+							(status) => status === "playing" || status === "watching",
 						)
 					) {
 						console.log("All players reconnected, resuming game.");
@@ -378,6 +389,61 @@ export class Magic extends DurableObject {
 		return { id: randomKey, mission: missions[randomKey] };
 	}
 
+	advanceTurnAndRound() {
+		if (!this.gameState) return;
+
+		const players = this.gameState.players;
+		const playerStatuses = this.gameState.playerStatus;
+		const currentTurn = this.gameState.turn;
+
+		const activePlayerIds = players.filter(
+			(p) => playerStatuses[p] === "playing",
+		);
+		if (activePlayerIds.length === 0) {
+			this.gameState.status = "paused";
+			return; // No one to advance turn to.
+		}
+
+		const currentPlayerId = players[currentTurn];
+
+		// Find the index of the current player in the list of *active* players.
+		// If the current player is not active (e.g., a watcher), this will be -1.
+		const currentPlayerActiveIndex = activePlayerIds.indexOf(currentPlayerId);
+
+		let nextPlayerId: string | null = null;
+
+		if (currentPlayerActiveIndex === -1) {
+			// The turn was on an inactive player. Find the first active player after the current one.
+			let nextTurn = currentTurn;
+			for (let i = 0; i < players.length; i++) {
+				nextTurn = (nextTurn + 1) % players.length;
+				if (playerStatuses[players[nextTurn]] === "playing") {
+					nextPlayerId = players[nextTurn];
+					break;
+				}
+			}
+			if (!nextPlayerId) {
+				// Should be unreachable due to activePlayerIds.length check
+				this.gameState.status = "paused";
+				return;
+			}
+		} else {
+			// The current player is active. Find the next one in the active list.
+			const nextPlayerActiveIndex =
+				(currentPlayerActiveIndex + 1) % activePlayerIds.length;
+			nextPlayerId = activePlayerIds[nextPlayerActiveIndex];
+
+			// If we wrapped around the active players list, increment the round.
+			if (nextPlayerActiveIndex === 0) {
+				this.gameState.round += 1;
+			}
+		}
+
+		if (nextPlayerId) {
+			this.gameState.turn = players.indexOf(nextPlayerId);
+		}
+	}
+
 	async makeMove(
 		player: string,
 		x: number,
@@ -397,11 +463,7 @@ export class Magic extends DurableObject {
 
 		this.gameState.board[y][x] = this.computeCellResult(x, y, num, operation);
 
-		if (this.gameState.turn === this.gameState.players.length - 1) {
-			this.gameState.round += 1;
-		}
-		this.gameState.turn =
-			(this.gameState.turn + 1) % this.gameState.players.length;
+		this.advanceTurnAndRound();
 
 		const prevHand = this.gameState.hands[player];
 
@@ -412,17 +474,19 @@ export class Magic extends DurableObject {
 		);
 
 		for (const id of this.gameState.players) {
-			const winary = this.isVictory(this.gameState.missions[id].mission);
-			if (winary.some((row) => row.includes(true))) {
-				if (!this.gameState) throw new Error("Game state is not initialized");
-				this.gameState.winnersAry[id] = winary;
-				if (!this.gameState.winners) {
-					this.gameState.winners = [id];
-				} else if (!this.gameState.winners.includes(id)) {
-					this.gameState.winners.push(id);
+			if (this.gameState.missions[id]) {
+				const winary = this.isVictory(this.gameState.missions[id].mission);
+				if (winary.some((row) => row.includes(true))) {
+					if (!this.gameState) throw new Error("Game state is not initialized");
+					this.gameState.winnersAry[id] = winary;
+					if (!this.gameState.winners) {
+						this.gameState.winners = [id];
+					} else if (!this.gameState.winners.includes(id)) {
+						this.gameState.winners.push(id);
+					}
+					console.log("winary", winary);
+					console.log("this.gameState.winnersAry", this.gameState.winnersAry);
 				}
-				console.log("winary", winary);
-				console.log("this.gameState.winnersAry", this.gameState.winnersAry);
 			}
 		}
 
@@ -544,11 +608,7 @@ export class Magic extends DurableObject {
 
 	async pass() {
 		if (!this.gameState) return;
-		if (this.gameState.turn === this.gameState.players.length - 1) {
-			this.gameState.round += 1;
-		}
-		this.gameState.turn =
-			(this.gameState.turn + 1) % this.gameState.players.length;
+		this.advanceTurnAndRound();
 		this.gameState.timeLimitUnix =
 			Date.now() + this.gameState.rules.timeLimit * 1000;
 		clearTimeout(timeout);

@@ -16,7 +16,7 @@ export default function Lobby() {
 	const [userName, setUserName] = useState("");
 	const [rooms, setRooms] = useState<Room[]>([]);
 	const [newRoomName, setNewRoomName] = useState("");
-	const [roomSecret, setRoomSecret] = useState("");
+	const [joinRoomSecret, setJoinRoomSecret] = useState("");
 	const [joinError, setJoinError] = useState<string | null>(null);
 	const navigate = useNavigate();
 	const [step, setStep] = useState(0);
@@ -73,10 +73,10 @@ export default function Lobby() {
 	};
 
 	const handleJoinWithSecret = async () => {
-		if (!roomSecret) return;
+		if (!joinRoomSecret) return;
 		setJoinError(null);
 		const res = await client.rooms.join.$post({
-			json: { secret: roomSecret },
+			json: { secret: joinRoomSecret },
 		});
 		const data = await res.json();
 		if (res.ok) {
@@ -145,7 +145,7 @@ export default function Lobby() {
 						</div>
 					</div>
 					<div>
-						<h2 className="text-2xl font-bold mb-4">Join with Secret</h2>
+						<h2 className="text-2xl font-bold mb-4">Join a Room</h2>
 						<div className="card bg-base-100 shadow-xl">
 							<div className="card-body">
 								{joinError && (
@@ -159,8 +159,8 @@ export default function Lobby() {
 									type="text"
 									placeholder="Enter secret code"
 									className="input input-bordered w-full"
-									value={roomSecret}
-									onChange={(e) => setRoomSecret(e.target.value)}
+									value={joinRoomSecret}
+									onChange={(e) => setJoinRoomSecret(e.target.value)}
 								/>
 								<div className="card-actions justify-end mt-4">
 									<button
