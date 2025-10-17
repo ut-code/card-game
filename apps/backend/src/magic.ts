@@ -474,7 +474,7 @@ export class Magic extends RoomMatch<GameState> {
 					.toSorted((a, b) => a - b)
 					.slice(1)
 					.every((val, i) => val - obary[i] === mission.number);
-			case "geometic":
+			case "geometric":
 				return obary
 					.toSorted((a, b) => a - b)
 					.slice(1)
