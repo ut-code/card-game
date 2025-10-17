@@ -435,14 +435,14 @@ export class Magic extends RoomMatch<GameState> {
 			if (mission.type === "prime") {
 				let hikaku = 0;
 				for (let j = 0; j < boardary.length; j++) {
-					if (this.prime(boardary[j])) {
+					if (this.isPrime(boardary[j])) {
 						hikaku += 1;
 					}
 				}
 				if (hikaku > 3) {
 					for (let i = 0; i < nullinary.length; i++) {
 						matrix[Math.floor(i / mission.number)][i % mission.number] =
-							this.prime(nullinary[i]);
+							this.isPrime(nullinary[i]);
 					}
 				}
 			}
@@ -460,65 +460,33 @@ export class Magic extends RoomMatch<GameState> {
 
 	isWinner(obary: number[], mission: Mission) {
 		if (!this.state) throw new Error("Game state is not initialized");
-		if (obary.length === this.state.rules.boardSize) {
-			if (mission.type === "sum") {
-				let hikaku = 0;
-				for (let j = 0; j < this.state.rules.boardSize; j++) {
-					hikaku += obary[j];
-				}
-				if (hikaku === mission.number) {
-					return true;
-				}
-			}
-			if (mission.type === "multipile") {
-				let hikaku = 0;
-				for (let j = 0; j < this.state.rules.boardSize; j++) {
-					hikaku += obary[j] % mission.number;
-				}
-				if (hikaku === 0) {
-					return true;
-				}
-			}
-			if (mission.type === "arithmetic") {
-				obary.sort((first, second) => first - second);
-				let hikaku = 0;
-				for (let j = 1; j < this.state.rules.boardSize; j++) {
-					if (obary[j] - obary[j - 1] === mission.number) {
-						hikaku += 1;
-					}
-				}
-				if (hikaku === this.state.rules.boardSize - 1) {
-					return true;
-				}
-			}
-			if (mission.type === "geometic") {
-				obary.sort((first, second) => first - second);
-				let hikaku = 0;
-				for (let j = 1; j < this.state.rules.boardSize; j++) {
-					if (obary[j] === obary[j - 1] * mission.number) {
-						hikaku += 1;
-					}
-				}
-				if (hikaku === this.state.rules.boardSize - 1) {
-					return true;
-				}
-			}
-			if (mission.type === "prime") {
-				let hikaku = 0;
-				for (let j = 0; j < this.state.rules.boardSize; j++) {
-					if (this.prime(obary[j])) {
-						hikaku += 1;
-					}
-				}
-				if (hikaku === this.state.rules.boardSize) {
-					return true;
-				}
-			}
+		if (obary.length !== this.state.rules.boardSize) {
+			return false;
 		}
-		return false;
+
+		switch (mission.type) {
+			case "sum":
+				return obary.reduce((acc, val) => acc + val, 0) === mission.number;
+			case "multipile":
+				return obary.every((val) => val % mission.number === 0);
+			case "arithmetic":
+				return obary
+					.toSorted((a, b) => a - b)
+					.slice(1)
+					.every((val, i) => val - obary[i] === mission.number);
+			case "geometic":
+				return obary
+					.toSorted((a, b) => a - b)
+					.slice(1)
+					.every((val, i) => val === obary[i] * mission.number);
+			case "prime":
+				return obary.every((val) => this.isPrime(val));
+			default:
+				return false;
+		}
 	}
 
-	prime(number: number | null) {
+	isPrime(number: number | null) {
 		if (number === null) {
 			return false;
 		}
