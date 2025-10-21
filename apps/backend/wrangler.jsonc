@@ -9,6 +9,10 @@
 			{
 				"name": "MAGIC",
 				"class_name": "Magic"
+			},
+			{
+				"name": "MEMORY",
+				"class_name": "Memory"
 			}
 		]
 	},
@@ -16,6 +20,10 @@
 		{
 			"tag": "v1",
 			"new_sqlite_classes": ["Magic"]
+		},
+		{
+			"tag": "v2",
+			"new_sqlite_classes": ["Memory"]
 		}
 	]
 }

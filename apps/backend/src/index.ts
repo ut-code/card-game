@@ -17,6 +17,8 @@ import {
 	type Rule,
 } from "./magic";
 
+import { Memory } from "./memory";
+
 type Bindings = {
 	MAGIC: DurableObjectNamespace;
 	MEMORY: DurableObjectNamespace;
@@ -339,4 +341,4 @@ export type AppType = typeof apiApp;
 export default apiApp;
 
 export type { GameState, MoveAction, MessageType, Rule, Operation };
-export { Magic };
+export { Magic, Memory };
