@@ -7,6 +7,7 @@ export type PlayerStatus =
 	| "ready"
 	| "playing"
 	| "finished"
+	| "watching"
 	| "error";
 
 export interface Session {
@@ -104,24 +105,81 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 
 		// New player
 		if (!this.state.players.includes(playerId)) {
-			if (this.state.status === "preparing") {
-				this.state.players.push(playerId);
-				this.state.names[playerId] = playerName;
-				this.state.playerStatus[playerId] = "preparing";
+			switch (this.state.status) {
+				case "preparing":
+					this.state.players.push(playerId);
+					this.state.names[playerId] = playerName;
+					this.state.playerStatus[playerId] = "preparing";
+
+					await this.ctx.storage.put("gameState", this.state);
+					this.broadcast({ type: "state", payload: this.state });
+					break;
+				case "playing":
+					this.state.players.push(playerId);
+					this.state.names[playerId] = playerName;
+					this.state.playerStatus[playerId] = "watching";
+
+					await this.ctx.storage.put("gameState", this.state);
+					this.broadcast({ type: "state", payload: this.state });
+					break;
+				case "paused":
+					// if (this.state.players.includes(playerId)) {
+					// 	this.state.playerStatus[playerId] = "playing";
+					// 	if (
+					// 		Object.values(this.state.playerStatus).every(
+					// 			(status) => status === "playing",
+					// 		)
+					// 	) {
+					// 		console.log("All players reconnected, resuming game.");
+					// 		this.state.status = "playing";
+					// 	} else {
+					// 		console.log("Waiting for other players to reconnect.");
+					// 	}
+					// 	await this.ctx.storage.put("gameState", this.state);
+					// 	this.broadcast({ type: "state", payload: this.state });
+					// } else {
+					// 	console.error("Game already started, cannot join now.");
+					// }
+					this.state.players.push(playerId);
+					this.state.names[playerId] = playerName;
+					this.state.playerStatus[playerId] = "watching";
+
+					await this.ctx.storage.put("gameState", this.state);
+					this.broadcast({ type: "state", payload: this.state });
+					break;
+				default:
+					this.state.status satisfies never;
 			}
 		} else {
 			// Reconnecting player
-			if (this.state.playerStatus[playerId] === "error") {
-				this.state.playerStatus[playerId] =
-					this.state.status === "paused" ? "playing" : "preparing";
-				if (
-					this.state.status === "paused" &&
-					this.state.players.every(
-						(p) => this.state?.playerStatus[p] === "playing",
-					)
-				) {
-					this.state.status = "playing";
-				}
+			if (this.state.playerStatus[playerId] !== "error") {
+				throw new Error(
+					`Player is already connected but tried to connect again: ${this.state.playerStatus[playerId]}`,
+				);
+			}
+			switch (this.state.status) {
+				case "preparing":
+					this.state.playerStatus[playerId] = "preparing";
+					break;
+				case "playing":
+					this.state.playerStatus[playerId] = "watching";
+					break;
+				//   throw new Error("Game already started, but trying to reconnect.");
+				case "paused":
+					this.state.playerStatus[playerId] = "playing";
+					if (
+						Object.values(this.state.playerStatus).every(
+							(status) => status === "playing" || status === "watching",
+						)
+					) {
+						console.log("All players reconnected, resuming game.");
+						this.state.status = "playing";
+					} else {
+						console.log("Waiting for other players to reconnect.");
+					}
+					break;
+				default:
+					this.state.status satisfies never;
 			}
 		}
 		await this.ctx.storage.put("gameState", this.state);

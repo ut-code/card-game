@@ -233,8 +233,13 @@ export default function RoomPage() {
 		: null;
 	const ws = useRef<WebSocket | null>(null);
 
+	const activePlayerIds = user
+		? (gameState?.players.filter(
+				(p) => gameState?.playerStatus[p] === "playing",
+			) ?? null)
+		: null;
 	const opponentIds = user
-		? (gameState?.players.filter((p) => p !== user.id) ?? null)
+		? (activePlayerIds?.filter((p) => p !== user.id) ?? null)
 		: null;
 	const currentPlayerId = gameState?.players[gameState.turn] ?? null;
 
@@ -243,6 +248,9 @@ export default function RoomPage() {
 
 	const [winnerDisplay, setWinnerDisplay] = useState(0);
 	const [remainingTime, setRemainingTime] = useState(0);
+	const [spectatedPlayerId, setSpectatedPlayerId] = useState<string | null>(
+		null,
+	);
 
 	// WebSocket connection effect
 	useEffect(() => {
@@ -383,6 +391,132 @@ export default function RoomPage() {
 		);
 	}
 
+	if (myStatus === "watching") {
+		if (!currentPlayerId) {
+			throw new Error("Current player ID is missing");
+		}
+
+		const playingPlayers = gameState.players.filter(
+			(p) => gameState.playerStatus[p] === "playing",
+		);
+
+		const spectatedPlayer = spectatedPlayerId
+			? {
+					id: spectatedPlayerId,
+					name: gameState.names[spectatedPlayerId],
+					hand: gameState.hands[spectatedPlayerId],
+					mission: gameState.missions[spectatedPlayerId],
+				}
+			: null;
+
+		return (
+			<div className="p-4 md:p-8 flex flex-col gap-4">
+				<h1 className="text-2xl font-bold text-center">Watching Game</h1>
+
+				{/* Player perspective switcher */}
+				<div className="flex justify-center gap-2 p-2 bg-base-200 rounded-lg">
+					<button
+						type="button"
+						className={`btn ${!spectatedPlayerId ? "btn-primary" : ""}`}
+						onClick={() => setSpectatedPlayerId(null)}
+					>
+						Overview
+					</button>
+					{playingPlayers.map((pId) => (
+						<button
+							key={pId}
+							type="button"
+							className={`btn ${spectatedPlayerId === pId ? "btn-primary" : ""}`}
+							onClick={() => setSpectatedPlayerId(pId)}
+						>
+							{gameState.names[pId]}
+						</button>
+					))}
+				</div>
+
+				{/* Opponents' Missions */}
+				<div className="flex justify-center gap-4 mb-4">
+					{spectatedPlayer
+						? // Single player perspective
+							playingPlayers
+								.filter((pId) => pId !== spectatedPlayer.id)
+								.map((opponentId) =>
+									gameState.missions[opponentId] ? (
+										<Mission
+											key={opponentId}
+											title={`${gameState.names[opponentId]}'s mission`}
+											description={
+												gameState.missions[opponentId]?.mission.description
+											}
+										/>
+									) : null,
+								)
+						: null}
+				</div>
+
+				{/* Game Board */}
+				<div className="w-full max-w-md mx-auto">
+					<TurnDisplay
+						round={gameState.round}
+						currentPlayerId={currentPlayerId}
+						currentPlayerName={gameState.names[currentPlayerId]}
+						myId={user.id} // Will never be "Your Turn"
+						remainingTime={Math.ceil(remainingTime / 1000)}
+					/>
+					<GameBoard board={gameState.board} onCellClick={() => {}} />
+				</div>
+
+				{/* Player's Info (Hand and Mission) */}
+				<div className="flex flex-col items-center gap-4 mt-4">
+					{spectatedPlayer ? (
+						<>
+							<Mission
+								title={`${spectatedPlayer.name}'s mission`}
+								description={spectatedPlayer.mission?.mission.description}
+							/>
+							<Hand
+								cards={spectatedPlayer.hand}
+								onCardClick={() => {}}
+								selectedNumIndex={null}
+							/>
+						</>
+					) : (
+						<div>
+							{
+								// Overview perspective
+								playingPlayers.map((playerId) =>
+									gameState.missions[playerId] ? (
+										<div className="flex" key={playerId}>
+											<div className="ml-0">
+												<Mission
+													key={playerId}
+													title={`${gameState.names[playerId]}'s mission`}
+													description={
+														gameState.missions[playerId]?.mission.description
+													}
+												/>
+											</div>
+											<div className="ml-auto">
+												<Hand
+													cards={gameState.hands[playerId]}
+													onCardClick={() => {}}
+													selectedNumIndex={null}
+												/>
+											</div>
+										</div>
+									) : null,
+								)
+							}
+							<div className="text-center mt-4 p-4 bg-base-200 rounded-lg">
+								<h2 className="text-xl font-bold">You are watching</h2>
+								<p>Select a player above to see their perspective.</p>
+							</div>
+						</div>
+					)}
+				</div>
+			</div>
+		);
+	}
 	if (myStatus === "preparing" || myStatus === "ready") {
 		return (
 			<div className="flex h-screen w-full flex-col items-center justify-center gap-8">
@@ -640,6 +774,7 @@ export default function RoomPage() {
 		}
 		return (
 			<div className="p-4 md:p-8 flex flex-col gap-4">
+				<div className="font-semibold">Password:{roomSecret}</div>
 				{/* Opponent's Info */}
 				{opponentIds && (
 					<div className="flex justify-center gap-4 mb-4">

@@ -224,6 +224,61 @@ export class Magic extends RoomMatch<GameState> {
 		return { id: randomKey, mission: missions[randomKey] };
 	}
 
+	advanceTurnAndRound() {
+		if (!this.gameState) return;
+
+		const players = this.gameState.players;
+		const playerStatuses = this.gameState.playerStatus;
+		const currentTurn = this.gameState.turn;
+
+		const activePlayerIds = players.filter(
+			(p) => playerStatuses[p] === "playing",
+		);
+		if (activePlayerIds.length === 0) {
+			this.gameState.status = "paused";
+			return; // No one to advance turn to.
+		}
+
+		const currentPlayerId = players[currentTurn];
+
+		// Find the index of the current player in the list of *active* players.
+		// If the current player is not active (e.g., a watcher), this will be -1.
+		const currentPlayerActiveIndex = activePlayerIds.indexOf(currentPlayerId);
+
+		let nextPlayerId: string | null = null;
+
+		if (currentPlayerActiveIndex === -1) {
+			// The turn was on an inactive player. Find the first active player after the current one.
+			let nextTurn = currentTurn;
+			for (let i = 0; i < players.length; i++) {
+				nextTurn = (nextTurn + 1) % players.length;
+				if (playerStatuses[players[nextTurn]] === "playing") {
+					nextPlayerId = players[nextTurn];
+					break;
+				}
+			}
+			if (!nextPlayerId) {
+				// Should be unreachable due to activePlayerIds.length check
+				this.gameState.status = "paused";
+				return;
+			}
+		} else {
+			// The current player is active. Find the next one in the active list.
+			const nextPlayerActiveIndex =
+				(currentPlayerActiveIndex + 1) % activePlayerIds.length;
+			nextPlayerId = activePlayerIds[nextPlayerActiveIndex];
+
+			// If we wrapped around the active players list, increment the round.
+			if (nextPlayerActiveIndex === 0) {
+				this.gameState.round += 1;
+			}
+		}
+
+		if (nextPlayerId) {
+			this.gameState.turn = players.indexOf(nextPlayerId);
+		}
+	}
+
 	async makeMove(
 		player: string,
 		x: number,
@@ -243,27 +298,26 @@ export class Magic extends RoomMatch<GameState> {
 
 		this.state.board[y][x] = this.computeCellResult(x, y, num, operation);
 
-		if (this.state.turn === this.state.players.length - 1) {
-			this.state.round += 1;
-		}
-		this.state.turn = (this.state.turn + 1) % this.state.players.length;
+		this.advanceTurnAndRound();
 
 		const prevHand = this.state.hands[player];
 
 		this.state.hands[player] = prevHand.toSpliced(numIndex, 1, this.drawCard());
 
 		for (const id of this.state.players) {
-			const winary = this.isVictory(this.state.missions[id].mission);
-			if (winary.some((row) => row.includes(true))) {
-				if (!this.state) throw new Error("Game state is not initialized");
-				this.state.winnersAry[id] = winary;
-				if (!this.state.winners) {
-					this.state.winners = [id];
-				} else if (!this.state.winners.includes(id)) {
-					this.state.winners.push(id);
+			if (this.state.missions[id]) {
+				const winary = this.isVictory(this.state.missions[id].mission);
+				if (winary.some((row) => row.includes(true))) {
+					if (!this.state) throw new Error("Game state is not initialized");
+					this.state.winnersAry[id] = winary;
+					if (!this.state.winners) {
+						this.state.winners = [id];
+					} else if (!this.state.winners.includes(id)) {
+						this.state.winners.push(id);
+					}
+					console.log("winary", winary);
+					console.log("this.state.winnersAry", this.state.winnersAry);
 				}
-				console.log("winary", winary);
-				console.log("this.state.winnersAry", this.state.winnersAry);
 			}
 		}
 
@@ -286,10 +340,7 @@ export class Magic extends RoomMatch<GameState> {
 
 	async pass() {
 		if (!this.state) return;
-		if (this.state.turn === this.state.players.length - 1) {
-			this.state.round += 1;
-		}
-		this.state.turn = (this.state.turn + 1) % this.state.players.length;
+		this.advanceTurnAndRound();
 		this.state.timeLimitUnix = Date.now() + this.state.rules.timeLimit * 1000;
 		clearTimeout(timeout);
 		timeout = setTimeout(() => {
