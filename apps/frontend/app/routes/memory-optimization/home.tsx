@@ -1,3 +1,5 @@
+// TODO: Componentにして再利用
+
 import type { User } from "@apps/backend";
 import { useEffect, useState } from "react";
 import { useLoaderData, useNavigate } from "react-router";

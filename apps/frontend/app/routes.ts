@@ -11,4 +11,11 @@ export default [
 		route("magic-square", "routes/magic-square/home.tsx"),
 		route("magic-square/room/:roomId", "routes/magic-square/room.$roomId.tsx"),
 	]),
+	layout("routes/memory-optimization/layout.tsx", [
+		route("memory-optimization", "routes/memory-optimization/home.tsx"),
+		route(
+			"memory-optimization/room/:roomId",
+			"routes/memory-optimization/room.$roomId.tsx",
+		),
+	]),
 ] satisfies RouteConfig;
