@@ -1,5 +1,5 @@
 export type Mission = {
-	type: "sum" | "multipile" | "arithmetic" | "geometic" | "prime";
+	type: "sum" | "multipile" | "arithmetic" | "geometric" | "prime";
 	target: "column" | "row" | "diagonal" | "allDirection" | "allCell";
 	number: number;
 	description: string;
@@ -277,13 +277,13 @@ export const missions: Record<string, Mission> = {
 		description: "どこかの列が公差が4の等差数列",
 	},
 	"45": {
-		type: "geometic",
+		type: "geometric",
 		target: "allDirection",
 		number: 2,
 		description: "行、列、対角線のうちどこかが公比が2の等比数列",
 	},
 	"46": {
-		type: "geometic",
+		type: "geometric",
 		target: "allDirection",
 		number: 3,
 		description: "行、列、対角線のうちどこかが公比が3の等比数列",
