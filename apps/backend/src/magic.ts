@@ -225,17 +225,17 @@ export class Magic extends RoomMatch<GameState> {
 	}
 
 	advanceTurnAndRound() {
-		if (!this.gameState) return;
+		if (!this.state) return;
 
-		const players = this.gameState.players;
-		const playerStatuses = this.gameState.playerStatus;
-		const currentTurn = this.gameState.turn;
+		const players = this.state.players;
+		const playerStatuses = this.state.playerStatus;
+		const currentTurn = this.state.turn;
 
 		const activePlayerIds = players.filter(
 			(p) => playerStatuses[p] === "playing",
 		);
 		if (activePlayerIds.length === 0) {
-			this.gameState.status = "paused";
+			this.state.status = "paused";
 			return; // No one to advance turn to.
 		}
 
@@ -259,7 +259,7 @@ export class Magic extends RoomMatch<GameState> {
 			}
 			if (!nextPlayerId) {
 				// Should be unreachable due to activePlayerIds.length check
-				this.gameState.status = "paused";
+				this.state.status = "paused";
 				return;
 			}
 		} else {
@@ -270,12 +270,12 @@ export class Magic extends RoomMatch<GameState> {
 
 			// If we wrapped around the active players list, increment the round.
 			if (nextPlayerActiveIndex === 0) {
-				this.gameState.round += 1;
+				this.state.round += 1;
 			}
 		}
 
 		if (nextPlayerId) {
-			this.gameState.turn = players.indexOf(nextPlayerId);
+			this.state.turn = players.indexOf(nextPlayerId);
 		}
 	}
 
