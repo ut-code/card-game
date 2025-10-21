@@ -18,6 +18,7 @@ export const sessions = pgTable("Session", {
 export const rooms = pgTable("Room", {
 	id: text("id").primaryKey(),
 	name: text("name").notNull(),
+	gameTitle: text("gameType").notNull(),
 	createdAt: timestamp("createdAt", { withTimezone: true }).defaultNow(),
 	users: text("users").array().notNull(),
 	hostId: text("hostId")

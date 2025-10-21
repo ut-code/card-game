@@ -76,7 +76,7 @@ export default function Lobby() {
 		const roomName =
 			newRoomName || `room-${Math.floor(Math.random() * 100000)}`;
 		const res = await client.rooms.create.$post({
-			json: { name: roomName },
+			json: { name: roomName, gameTitle: "magic-square" },
 		});
 		if (res.ok) {
 			const newRoom = await res.json();
