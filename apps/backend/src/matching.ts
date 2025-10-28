@@ -103,6 +103,7 @@ export class Matching extends DurableObject<Env> {
 					name: roomName,
 					hostId: this.waitingUser[0],
 					users: this.waitingUser,
+					matchingType: "random",
 				})
 				.returning();
 			await this.db.insert(schema.roomSecrets).values({
@@ -125,8 +126,6 @@ export class Matching extends DurableObject<Env> {
 		}
 		if (this.waitingUser && this.waitingUser.length === 2) {
 			const matchedUsers = [...this.waitingUser];
-			this.waitingUser = []; // すぐにリストをクリアして次の競合を防ぐ
-			await this.ctx.storage.delete("waitingUser");
 
 			try {
 				// データベース操作をトランザクションで囲む
@@ -142,6 +141,7 @@ export class Matching extends DurableObject<Env> {
 							name: roomName,
 							hostId: matchedUsers[0],
 							users: matchedUsers,
+							matchingType: "random",
 						})
 						.returning();
 
@@ -152,6 +152,10 @@ export class Matching extends DurableObject<Env> {
 
 					return { secret };
 				});
+
+				this.broadcast({ type: "goRoom", payload: secret });
+				this.waitingUser = []; // すぐにリストをクリアして次の競合を防ぐ
+				await this.ctx.storage.delete("waitingUser");
 
 				// マッチした2人のユーザーにのみ通知
 				const message = JSON.stringify({

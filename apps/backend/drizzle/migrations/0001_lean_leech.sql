@@ -1,0 +1,1 @@
+ALTER TABLE "Room" ALTER COLUMN "matchingType" SET DEFAULT 'room';

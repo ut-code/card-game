@@ -154,6 +154,7 @@ const apiApp = new Hono<{
 				name,
 				hostId: user.id,
 				users: [user.id],
+				matchingType: "room",
 			})
 			.returning();
 

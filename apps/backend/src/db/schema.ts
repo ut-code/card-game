@@ -23,6 +23,7 @@ export const rooms = pgTable("Room", {
 	hostId: text("hostId")
 		.notNull()
 		.references(() => users.id),
+	matchingType: text("matchingType").default("room").notNull(),
 });
 
 export const roomSecrets = pgTable("RoomSecret", {
@@ -30,6 +31,13 @@ export const roomSecrets = pgTable("RoomSecret", {
 		.primaryKey()
 		.references(() => rooms.id, { onDelete: "cascade" }),
 	secret: text("secret").notNull().unique(),
+});
+
+export const Ids = pgTable("Ids", {
+	roomId: text("roomId")
+		.primaryKey()
+		.references(() => rooms.id, { onDelete: "cascade" }),
+	gameId: text("gameId"),
 });
 
 // --- Relations ---
