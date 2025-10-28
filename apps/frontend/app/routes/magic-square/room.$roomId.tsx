@@ -343,7 +343,7 @@ export default function RoomPage() {
 	const handleReadyClick = () => {
 		if (myStatus === "ready") {
 			sendWsMessage({ type: "cancelReady" });
-		} else {
+		} else if (myStatus === "preparing") {
 			sendWsMessage({ type: "setReady" });
 		}
 	};
@@ -365,6 +365,14 @@ export default function RoomPage() {
 			await client.rooms[":roomId"].leave.$post({ param: { roomId } });
 		}
 		navigate("/magic-square");
+	};
+
+	const handleSpectatorClick = async () => {
+		if (myStatus === "spectatingReady") {
+			sendWsMessage({ type: "cancelspectatingReady" });
+		} else if (myStatus === "preparing") {
+			sendWsMessage({ type: "setspectatingReady" });
+		}
 	};
 
 	// --- Render Logic ---
@@ -391,7 +399,7 @@ export default function RoomPage() {
 		);
 	}
 
-	if (myStatus === "watching") {
+	if (myStatus === "spectating") {
 		if (!currentPlayerId) {
 			throw new Error("Current player ID is missing");
 		}
@@ -411,7 +419,7 @@ export default function RoomPage() {
 
 		return (
 			<div className="p-4 md:p-8 flex flex-col gap-4">
-				<h1 className="text-2xl font-bold text-center">Watching Game</h1>
+				<h1 className="text-2xl font-bold text-center">Spectating Game</h1>
 
 				{/* Player perspective switcher */}
 				<div className="flex justify-center gap-2 p-2 bg-base-200 rounded-lg">
@@ -508,7 +516,7 @@ export default function RoomPage() {
 								)
 							}
 							<div className="text-center mt-4 p-4 bg-base-200 rounded-lg">
-								<h2 className="text-xl font-bold">You are watching</h2>
+								<h2 className="text-xl font-bold">You are spectating</h2>
 								<p>Select a player above to see their perspective.</p>
 							</div>
 						</div>
@@ -517,7 +525,11 @@ export default function RoomPage() {
 			</div>
 		);
 	}
-	if (myStatus === "preparing" || myStatus === "ready") {
+	if (
+		myStatus === "preparing" ||
+		myStatus === "ready" ||
+		myStatus === "spectatingReady"
+	) {
 		return (
 			<div className="flex h-screen w-full flex-col items-center justify-center gap-8">
 				<h1 className="text-2xl font-bold">
@@ -547,16 +559,20 @@ export default function RoomPage() {
 								className={`rounded-full px-3 py-1 text-sm font-semibold ${
 									gameState.playerStatus[playerId] === "ready"
 										? "bg-green-500 text-white"
-										: gameState.playerStatus[playerId] === "error"
-											? "bg-red-500 text-white"
-											: "bg-gray-300 text-gray-700"
+										: gameState.playerStatus[playerId] === "spectatingReady"
+											? "bg-neutral text-white"
+											: gameState.playerStatus[playerId] === "error"
+												? "bg-red-500 text-white"
+												: "bg-gray-300 text-gray-700"
 								}`}
 							>
 								{gameState.playerStatus[playerId] === "ready"
 									? "Ready!"
-									: gameState.playerStatus[playerId] === "error"
-										? "Error"
-										: "Preparing..."}
+									: gameState.playerStatus[playerId] === "spectatingReady"
+										? "Spectator"
+										: gameState.playerStatus[playerId] === "error"
+											? "Error"
+											: "Preparing..."}
 							</span>
 						</li>
 					))}
@@ -630,6 +646,12 @@ export default function RoomPage() {
 					className={`card w-32 h-20 cursor-pointer items-center justify-center transition-colors duration-150 ${myStatus === "ready" ? "bg-green-500 text-white font-bold" : "bg-base-300 text-grey-700 shadow-lg"}`}
 				>
 					{myStatus === "ready" ? "READY!!" : "ready?"}
+				</div>
+				<div
+					onClick={handleSpectatorClick}
+					className={` btn text-white ${myStatus === "spectatingReady" ? "bg-green-500 font-bold" : "bg-neutral text-grey-700 shadow-lg"}`}
+				>
+					Spectator Mode
 				</div>
 				<div onClick={handleLeaveRoom} className="btn btn-error">
 					Leave Room
