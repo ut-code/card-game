@@ -391,7 +391,7 @@ export default function RoomPage() {
 		);
 	}
 
-	if (myStatus === "watching") {
+	if (myStatus === "spectating") {
 		if (!currentPlayerId) {
 			throw new Error("Current player ID is missing");
 		}
