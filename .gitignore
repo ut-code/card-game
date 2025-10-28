@@ -5,6 +5,8 @@ node_modules
 .env
 .direnv
 
+drizzle
+
 # target
 .react-router
 .wrangler
