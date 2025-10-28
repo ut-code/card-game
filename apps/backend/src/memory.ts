@@ -7,7 +7,7 @@ import { RoomMatch, type RoomState } from "./room";
 
 let timeout: ReturnType<typeof setTimeout>;
 
-type OccupyMemoryAction = {
+type ReserveMemoryAction = {
 	memoryCardId: string;
 	x: number;
 	y: number;
@@ -76,7 +76,7 @@ export type GameState = RoomState & {
 
 // Combined message types for both room and game actions
 export type MessageType =
-	| { type: "reserveMemory"; payload: OccupyMemoryAction }
+	| { type: "reserveMemory"; payload: ReserveMemoryAction }
 	| { type: "execFunction"; payload: ExecFunctionAction }
 	| { type: "execEvent"; payload: ExecEventAction }
 	| { type: "setReady"; payload?: undefined }
@@ -349,6 +349,8 @@ export class Memory extends RoomMatch<GameState> {
 		const { id, card: newCard } = this.drawMemoryCard();
 		this.state.hands[playerId].memory[id] = newCard;
 
+		this.state.clock[playerId] -= card.cost;
+
 		// for (const id of this.state.players) {
 		// 	if (this.state.missions[id]) {
 		// 		const winary = this.isVictory(this.state.missions[id].mission);
@@ -430,8 +432,8 @@ export class Memory extends RoomMatch<GameState> {
 			return false;
 		}
 
-		if (this.state.board[y][x] === undefined) {
-			console.error("Invalid board position:", x, y);
+		if (this.state.clock[player] < card.cost) {
+			console.error("Not enough clock:", player, card.cost);
 			return false;
 		}
 
