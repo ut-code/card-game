@@ -42,7 +42,9 @@ export type MessageType =
 	| { type: "changeRule"; payload: Rule }
 	| { type: "pass"; payload?: undefined }
 	| { type: "backToLobby"; payload?: undefined }
-	| { type: "removePlayer"; payload?: undefined };
+	| { type: "removePlayer"; payload?: undefined }
+	| { type: "setspectatingReady"; payload?: undefined }
+	| { type: "cancelspectatingReady"; payload?: undefined };
 
 const DEFAULT_BOARD_SIZE = 3;
 const DEFAULT_TIME_LIMIT_MS = 10000;
@@ -92,6 +94,12 @@ export class Magic extends RoomMatch<GameState> {
 					break;
 				case "backToLobby":
 					await this.backToLobby(playerId);
+					break;
+				case "setspectatingReady":
+					await this.setspectatingReady(playerId);
+					break;
+				case "cancelspectatingReady":
+					await this.cancelspectatingReady(playerId);
 					break;
 				default:
 					throw new Error(`Unhandled message type: ${type}`);
@@ -155,31 +163,43 @@ export class Magic extends RoomMatch<GameState> {
 			.fill(null)
 			.map(() => Array(size).fill(null));
 		this.state.round = 0;
-		this.state.turn = 0;
 		this.state.winners = null;
 		this.state.winnersAry = {};
 		this.state.hands = {};
 		this.state.missions = {};
 
 		for (const playerId of this.state.players) {
-			if (this.state.playerStatus[playerId] !== "ready") {
+			if (
+				this.state.playerStatus[playerId] !== "ready" &&
+				this.state.playerStatus[playerId] !== "spectatingReady"
+			) {
 				console.error("one of the players not ready:", playerId);
 				return;
 			}
-			this.state.playerStatus[playerId] = "playing";
+			this.state.playerStatus[playerId] =
+				this.state.playerStatus[playerId] === "ready"
+					? "playing"
+					: "spectating";
 
-			if (this.state.hands[playerId]) {
-				console.error("player already has a hand:", playerId);
-				return;
-			}
-			this.state.hands[playerId] = this.drawInitialHand();
+			if (this.state.playerStatus[playerId] === "playing") {
+				if (this.state.hands[playerId]) {
+					console.error("player already has a hand:", playerId);
+					return;
+				}
+				this.state.hands[playerId] = this.drawInitialHand();
 
-			if (this.state.missions[playerId]) {
-				console.error("player already has a mission:", playerId);
-				return;
+				if (this.state.missions[playerId]) {
+					console.error("player already has a mission:", playerId);
+					return;
+				}
+				this.state.missions[playerId] = this.getRandomMission();
 			}
-			this.state.missions[playerId] = this.getRandomMission();
 		}
+
+		const firstPlayingIndex = this.state.players.findIndex(
+			(p) => this.state?.playerStatus[p] === "playing",
+		);
+		this.state.turn = firstPlayingIndex;
 		this.state.status = "playing";
 		this.state.timeLimitUnix = Date.now() + this.state.rules.timeLimit * 1000;
 		clearTimeout(timeout);
@@ -242,7 +262,7 @@ export class Magic extends RoomMatch<GameState> {
 		const currentPlayerId = players[currentTurn];
 
 		// Find the index of the current player in the list of *active* players.
-		// If the current player is not active (e.g., a watcher), this will be -1.
+		// If the current player is not active (e.g., a spectator), this will be -1.
 		const currentPlayerActiveIndex = activePlayerIds.indexOf(currentPlayerId);
 
 		let nextPlayerId: string | null = null;

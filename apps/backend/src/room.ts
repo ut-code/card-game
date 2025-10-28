@@ -7,7 +7,8 @@ export type PlayerStatus =
 	| "ready"
 	| "playing"
 	| "finished"
-	| "watching"
+	| "spectating"
+	| "spectatingReady"
 	| "error";
 
 export interface Session {
@@ -115,12 +116,14 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 					this.broadcast({ type: "state", payload: this.state });
 					break;
 				case "playing":
-					this.state.players.push(playerId);
-					this.state.names[playerId] = playerName;
-					this.state.playerStatus[playerId] = "watching";
+					if (!this.state.players.includes(playerId)) {
+						this.state.players.push(playerId);
+						this.state.names[playerId] = playerName;
+						this.state.playerStatus[playerId] = "spectating";
 
-					await this.ctx.storage.put("gameState", this.state);
-					this.broadcast({ type: "state", payload: this.state });
+						await this.ctx.storage.put("gameState", this.state);
+						this.broadcast({ type: "state", payload: this.state });
+					}
 					break;
 				case "paused":
 					// if (this.state.players.includes(playerId)) {
@@ -142,7 +145,7 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 					// }
 					this.state.players.push(playerId);
 					this.state.names[playerId] = playerName;
-					this.state.playerStatus[playerId] = "watching";
+					this.state.playerStatus[playerId] = "spectating";
 
 					await this.ctx.storage.put("gameState", this.state);
 					this.broadcast({ type: "state", payload: this.state });
@@ -162,14 +165,14 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 					this.state.playerStatus[playerId] = "preparing";
 					break;
 				case "playing":
-					this.state.playerStatus[playerId] = "watching";
+					this.state.playerStatus[playerId] = "spectating";
 					break;
 				//   throw new Error("Game already started, but trying to reconnect.");
 				case "paused":
 					this.state.playerStatus[playerId] = "playing";
 					if (
 						Object.values(this.state.playerStatus).every(
-							(status) => status === "playing" || status === "watching",
+							(status) => status === "playing" || status === "spectating",
 						)
 					) {
 						console.log("All players reconnected, resuming game.");
@@ -222,8 +225,11 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 		this.state.playerStatus[playerId] = "ready";
 
 		if (
-			this.state.players.length >= 2 &&
-			this.state.players.every((p) => this.state?.playerStatus[p] === "ready")
+			Object.values(this.state.playerStatus).filter((s) => s === "ready")
+				.length >= 2 &&
+			Object.values(this.state.playerStatus).every(
+				(s) => s === "ready" || s === "spectatingReady",
+			)
 		) {
 			await this.startGame();
 		} else {
@@ -242,6 +248,37 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 	async backToLobby(playerId: string) {
 		if (!this.state) return;
 		this.state.playerStatus[playerId] = "preparing";
+		await this.ctx.storage.put("gameState", this.state);
+		this.broadcast({ type: "state", payload: this.state });
+	}
+
+	async setspectatingReady(player: string) {
+		if (!this.state) return;
+		if (this.state.playerStatus[player] !== "preparing") {
+			console.error("Player not in preparing state:", player);
+			return;
+		}
+		this.state.playerStatus[player] = "spectatingReady";
+		if (
+			Object.values(this.state.playerStatus).filter((s) => s === "ready")
+				.length >= 2 &&
+			Object.values(this.state.playerStatus).every(
+				(s) => s === "ready" || s === "spectatingReady",
+			)
+		) {
+			this.startGame();
+		} else {
+			await this.ctx.storage.put("gameState", this.state);
+			this.broadcast({ type: "state", payload: this.state });
+		}
+	}
+	async cancelspectatingReady(player: string) {
+		if (!this.state) return;
+		if (this.state.playerStatus[player] !== "spectatingReady") {
+			console.error("Player not in spectatingReady state:", player);
+			return;
+		}
+		this.state.playerStatus[player] = "preparing";
 		await this.ctx.storage.put("gameState", this.state);
 		this.broadcast({ type: "state", payload: this.state });
 	}
