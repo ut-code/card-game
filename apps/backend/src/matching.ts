@@ -91,31 +91,6 @@ export class Matching extends DurableObject<Env> {
 		ws.addEventListener("error", () => this.removeUser(session));
 
 		ws.send(JSON.stringify({ type: "userChange", payload: this.waitingUser }));
-
-		if (this.waitingUser.length === 2) {
-			const roomName = generateRandomString(6);
-			const roomSecret = Math.floor(100000 + Math.random() * 900000).toString();
-			const roomId = crypto.randomUUID();
-			const [newRoom] = await this.db
-				.insert(schema.rooms)
-				.values({
-					id: roomId,
-					name: roomName,
-					hostId: this.waitingUser[0],
-					users: this.waitingUser,
-					matchingType: "random",
-				})
-				.returning();
-			await this.db.insert(schema.roomSecrets).values({
-				roomId: newRoom.id,
-				secret: roomSecret,
-			});
-			ws.send(JSON.stringify({ type: "goRoom", payload: roomSecret }));
-			this.waitingUser = [];
-			ws.send(
-				JSON.stringify({ type: "userChange", payload: this.waitingUser }),
-			);
-		}
 	}
 
 	async addUser(playerId: string) {
@@ -139,6 +114,7 @@ export class Matching extends DurableObject<Env> {
 						.values({
 							id: roomId,
 							name: roomName,
+							gameTitle: "logic-puzzle",
 							hostId: matchedUsers[0],
 							users: matchedUsers,
 							matchingType: "random",

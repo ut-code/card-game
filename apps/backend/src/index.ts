@@ -361,4 +361,4 @@ export type AppType = typeof apiApp;
 export default apiApp;
 
 export type { GameState, MoveAction, MessageType, Rule, Operation };
-export { Magic, Memory };
+export { Magic, Memory, Matching };
