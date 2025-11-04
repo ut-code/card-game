@@ -19,10 +19,17 @@ export type MoveAction = {
 export type Rule =
 	| { rule: "negativeDisabled"; state: boolean }
 	| { rule: "boardSize"; state: number }
-	| { rule: "timeLimit"; state: number };
+	| { rule: "timeLimit"; state: number }
+	| { rule: "cpu"; state: number };
 
 // GameState extends RoomState to include game-specific properties
 export type GameState = RoomState & {
+	rules: {
+		negativeDisabled: boolean;
+		boardSize: number;
+		timeLimit: number;
+		cpu: number;
+	};
 	round: number;
 	turn: number;
 	board: (number | null)[][];
@@ -121,6 +128,7 @@ export class Magic extends RoomMatch<GameState> {
 				negativeDisabled: false,
 				boardSize: DEFAULT_BOARD_SIZE,
 				timeLimit: DEFAULT_TIME_LIMIT_MS / 1000,
+				cpu: 0,
 			},
 			// GameState specific properties
 			round: 0,
@@ -140,16 +148,38 @@ export class Magic extends RoomMatch<GameState> {
 	async changeRule(payload: Rule) {
 		if (!this.state || this.state.status !== "preparing") return;
 
-		if (payload.rule === "negativeDisabled") {
-			this.state.rules.negativeDisabled = payload.state;
-		} else if (payload.rule === "boardSize") {
-			this.state.rules.boardSize = payload.state;
-			this.state.board = Array(payload.state)
-				.fill(null)
-				.map(() => Array(payload.state).fill(null));
-		} else if (payload.rule === "timeLimit") {
-			this.state.rules.timeLimit = payload.state;
+		switch (payload.rule) {
+			case "negativeDisabled":
+				this.state.rules.negativeDisabled = payload.state;
+				break;
+			case "boardSize": {
+				const size = payload.state;
+				if (size < 1 || size > 6) {
+					console.error("Invalid board size:", size);
+					return;
+				}
+				this.state.rules.boardSize = size;
+				this.state.board = Array(size)
+					.fill(null)
+					.map(() => Array(size).fill(null));
+				break;
+			}
+			case "timeLimit": {
+				const timeLimit = payload.state;
+				if (timeLimit < 1) {
+					console.error("Invalid time limit:", timeLimit);
+					return;
+				}
+				this.state.rules.timeLimit = timeLimit;
+				break;
+			}
+			case "cpu":
+				this.state.rules.cpu = payload.state;
+				break;
+			default:
+				payload satisfies never;
 		}
+
 		await this.ctx.storage.put("gameState", this.state);
 		this.broadcast({ type: "state", payload: this.state });
 	}

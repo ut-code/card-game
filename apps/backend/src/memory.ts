@@ -63,6 +63,10 @@ export type EventCard = {
 
 // GameState extends RoomState to include game-specific properties
 export type GameState = RoomState & {
+	rules: {
+		boardSize: number;
+		timeLimit: number;
+	};
 	round: number;
 	turn: number;
 	board: CellState[][];
@@ -163,7 +167,6 @@ export class Memory extends RoomMatch<GameState> {
 			playerStatus: {},
 			names: {},
 			rules: {
-				negativeDisabled: false,
 				boardSize: DEFAULT_BOARD_SIZE,
 				timeLimit: DEFAULT_TIME_LIMIT_MS / 1000,
 			},

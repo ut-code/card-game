@@ -21,11 +21,6 @@ export type RoomState = {
 	players: string[];
 	playerStatus: { [playerId: string]: PlayerStatus };
 	names: { [playerId: string]: string };
-	rules: {
-		negativeDisabled: boolean;
-		boardSize: number;
-		timeLimit: number;
-	};
 };
 
 export abstract class RoomMatch<T extends RoomState> extends DurableObject {
