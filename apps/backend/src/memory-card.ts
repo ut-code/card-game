@@ -1,6 +1,9 @@
 import type { EventCard, FunctionCard, MemoryCard } from "./memory.ts";
 
-export const memoryCards: Record<string, MemoryCard> = {
+export const memoryCards: Record<
+	MemoryCard["definitionId"],
+	Omit<MemoryCard, "definitionId">
+> = {
 	mc1: {
 		shape: [
 			[1, 1, 0],
@@ -50,7 +53,10 @@ export const memoryCards: Record<string, MemoryCard> = {
 	},
 };
 
-export const functionCards: Record<string, FunctionCard> = {
+export const functionCards: Record<
+	FunctionCard["definitionId"],
+	Omit<FunctionCard, "definitionId">
+> = {
 	fc1: {
 		shape: [
 			[1, 1, 1],
@@ -68,7 +74,10 @@ export const functionCards: Record<string, FunctionCard> = {
 	},
 };
 
-export const eventCards: Record<string, EventCard> = {
+export const eventCards: Record<
+	EventCard["definitionId"],
+	Omit<EventCard, "definitionId">
+> = {
 	ec1: {
 		description: "指定した1×1メモリを破壊",
 	},

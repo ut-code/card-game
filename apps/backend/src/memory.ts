@@ -15,6 +15,8 @@ type ReserveMemoryAction = {
 
 type ExecFunctionAction = {
 	functionCardId: string;
+	x: number;
+	y: number;
 };
 
 type ExecEventAction = {
@@ -22,7 +24,6 @@ type ExecEventAction = {
 };
 
 type Rule =
-	| { rule: "negativeDisabled"; state: boolean }
 	| { rule: "boardSize"; state: number }
 	| { rule: "timeLimit"; state: number };
 
@@ -44,19 +45,19 @@ type Hand = {
 };
 
 export type MemoryCard = {
-	// id: string;
+	definitionId: string;
 	shape: (0 | 1)[][];
 	cost: number;
 };
 
 export type FunctionCard = {
-	// id: string;
+	definitionId: string;
 	shape: (0 | 1)[][];
 	cost: number;
 };
 
 export type EventCard = {
-	// id: string;
+	definitionId: string;
 	description: string;
 };
 
@@ -70,7 +71,8 @@ export type GameState = RoomState & {
 	hands: {
 		[playerId: string]: Hand;
 	};
-	clock: { [playerId: string]: number };
+	clocks: { [playerId: string]: number };
+	points: { [playerId: string]: number };
 	timeLimitUnix: number;
 };
 
@@ -115,7 +117,12 @@ export class Memory extends RoomMatch<GameState> {
 					);
 					break;
 				case "execFunction":
-					await this.execFunction(playerId, payload.functionCardId);
+					await this.execFunction(
+						playerId,
+						payload.x,
+						payload.y,
+						payload.functionCardId,
+					);
 					break;
 				case "execEvent":
 					await this.execEvent(playerId, payload.eventCardId);
@@ -167,7 +174,8 @@ export class Memory extends RoomMatch<GameState> {
 			winners: null,
 			gameId: this.ctx.id.toString(),
 			hands: {},
-			clock: {},
+			clocks: {},
+			points: {},
 			timeLimitUnix: Date.now() + DEFAULT_TIME_LIMIT_MS,
 		};
 		await this.ctx.storage.put("gameState", this.state);
@@ -203,7 +211,8 @@ export class Memory extends RoomMatch<GameState> {
 		this.state.turn = 0;
 		this.state.winners = null;
 		this.state.hands = {};
-		this.state.clock = {};
+		this.state.clocks = {};
+		this.state.points = {};
 
 		for (const playerId of this.state.players) {
 			if (this.state.playerStatus[playerId] !== "ready") {
@@ -250,17 +259,23 @@ export class Memory extends RoomMatch<GameState> {
 	}
 
 	// TODO: 調整可能にする
-	drawMemoryCard() {
+	drawMemoryCard(): { id: string; card: MemoryCard } {
 		const key = Object.keys(memoryCards);
 		const randomKey = key[Math.floor(Math.random() * key.length)];
-		return { id: randomKey, card: memoryCards[randomKey] };
+		return {
+			id: Math.random().toString(36),
+			card: { definitionId: randomKey, ...memoryCards[randomKey] },
+		};
 	}
 
 	// TODO: ミッションの重複を避ける
-	getFunctionCard() {
+	getFunctionCard(): { id: string; card: FunctionCard } {
 		const key = Object.keys(functionCards);
 		const randomKey = key[Math.floor(Math.random() * key.length)];
-		return { id: randomKey, card: functionCards[randomKey] };
+		return {
+			id: Math.random().toString(36),
+			card: { definitionId: randomKey, ...functionCards[randomKey] },
+		};
 	}
 
 	advanceTurnAndRound() {
@@ -327,21 +342,20 @@ export class Memory extends RoomMatch<GameState> {
 		console.log("reserveMemory called", playerId, x, y, memoryCardId);
 		if (!this.state || this.state.winners) return;
 
-		if (!this.isValidMove(playerId, x, y, memoryCardId)) {
+		if (!this.isValidMove(playerId, x, y, memoryCardId, "memory")) {
 			console.error("Invalid move attempted:", playerId, x, y, memoryCardId);
 			return;
 		}
 
 		console.log("Making move:", playerId, x, y, memoryCardId);
 
-		// this.state.board[y][x] = this.computeCellResult(x, y, memoryCardId);
 		const card = memoryCards[memoryCardId];
 		if (!card) {
 			console.error("Memory card not found during occupy:", memoryCardId);
 			return;
 		}
 
-		this.reserveMemoryOnBoard(playerId, x, y, card.shape);
+		this.mutateBoard(playerId, x, y, "memory", card.shape);
 
 		this.advanceTurnAndRound();
 
@@ -349,7 +363,7 @@ export class Memory extends RoomMatch<GameState> {
 		const { id, card: newCard } = this.drawMemoryCard();
 		this.state.hands[playerId].memory[id] = newCard;
 
-		this.state.clock[playerId] -= card.cost;
+		this.state.clocks[playerId] -= card.cost;
 
 		// for (const id of this.state.players) {
 		// 	if (this.state.missions[id]) {
@@ -386,8 +400,43 @@ export class Memory extends RoomMatch<GameState> {
 	}
 
 	// TODO
-	execFunction(playerId: string, functionCardId: string) {
+	async execFunction(
+		playerId: string,
+		x: number,
+		y: number,
+		functionCardId: string,
+	) {
 		console.log("execFunction called", playerId, functionCardId);
+
+		if (!this.state) throw new Error("Game state is not initialized");
+
+		if (!this.isValidMove(playerId, x, y, functionCardId, "function")) {
+			console.error("Invalid move attempted:", playerId, functionCardId);
+			return;
+		}
+
+		const card = functionCards[functionCardId];
+
+		this.mutateBoard(playerId, x, y, "function", card.shape);
+		this.advanceTurnAndRound();
+
+		delete this.state.hands[playerId].func[functionCardId];
+		const { id, card: newCard } = this.getFunctionCard();
+		this.state.hands[playerId].func[id] = newCard;
+
+		this.state.clocks[playerId] -= card.cost;
+
+		// TODO: ポイント加算ロジックを調整する
+		this.state.points[playerId] += card.cost;
+
+		this.state.timeLimitUnix = Date.now() + this.state.rules.timeLimit * 1000;
+		clearTimeout(timeout);
+		timeout = setTimeout(() => {
+			this.pass();
+		}, this.state.rules.timeLimit * 1000);
+
+		await this.ctx.storage.put("gameState", this.state);
+		this.broadcast({ type: "state", payload: this.state });
 	}
 
 	execEvent(playerId: string, eventCardId: string) {
@@ -406,15 +455,14 @@ export class Memory extends RoomMatch<GameState> {
 		this.broadcast({ type: "state", payload: this.state });
 	}
 
-	isValidMove(player: string, x: number, y: number, memoryCardId: string) {
+	isValidMove(
+		player: string,
+		x: number,
+		y: number,
+		CardId: string,
+		type: "memory" | "function" | "event",
+	): boolean {
 		if (!this.state) throw new Error("Game state is not initialized");
-
-		// TODO: もっと詳しくバリデーションを書く
-		const card = memoryCards[memoryCardId];
-		if (!card) {
-			console.error("Memory card not found:", memoryCardId);
-			return false;
-		}
 
 		const currentPlayer = this.state.players[this.state.turn];
 		if (currentPlayer !== player) {
@@ -427,63 +475,159 @@ export class Memory extends RoomMatch<GameState> {
 			console.error("Invalid hand:", currentPlayer);
 			return false;
 		}
-		if (!currentHand.memory[memoryCardId]) {
-			console.error("Card not in hand:", memoryCardId);
-			return false;
-		}
 
-		if (this.state.clock[player] < card.cost) {
-			console.error("Not enough clock:", player, card.cost);
-			return false;
-		}
+		// TODO: もっと詳しくバリデーションを書く
+		switch (type) {
+			case "memory": {
+				const card = memoryCards[CardId];
+				if (!card) {
+					console.error("Memory card not found:", CardId);
+					return false;
+				}
 
-		const boardWidth = this.state.board[0].length;
-		const boardHeight = this.state.board.length;
+				if (!currentHand.memory[CardId]) {
+					console.error("Card not in hand:", CardId);
+					return false;
+				}
 
-		const cardWidth = card.shape[0].length;
-		const cardHeight = card.shape.length;
+				if (this.state.clocks[player] < card.cost) {
+					console.error("Not enough clock:", player, card.cost);
+					return false;
+				}
 
-		if (
-			x < 0 ||
-			y < 0 ||
-			x + cardWidth > boardWidth ||
-			y + cardHeight > boardHeight
-		) {
-			console.error("Out of bounds:", x, y);
-			return false;
-		}
+				const boardWidth = this.state.board[0].length;
+				const boardHeight = this.state.board.length;
 
-		for (let dy = 0; dy < cardHeight; dy++) {
-			for (let dx = 0; dx < cardWidth; dx++) {
-				if (card.shape[dy][dx] === 1) {
-					const boardCell = this.state.board[y + dy][x + dx];
-					if (!boardCell || boardCell.status !== "free") {
-						console.error("Cell already used:", x + dx, y + dy);
-						return false;
+				const cardWidth = card.shape[0].length;
+				const cardHeight = card.shape.length;
+
+				if (
+					x < 0 ||
+					y < 0 ||
+					x + cardWidth > boardWidth ||
+					y + cardHeight > boardHeight
+				) {
+					console.error("Out of bounds:", x, y);
+					return false;
+				}
+
+				for (let dy = 0; dy < cardHeight; dy++) {
+					for (let dx = 0; dx < cardWidth; dx++) {
+						if (card.shape[dy][dx] === 1) {
+							const boardCell = this.state.board[y + dy][x + dx];
+							if (!boardCell || boardCell.status !== "free") {
+								console.error("Cell already used:", x + dx, y + dy);
+								return false;
+							}
+						}
 					}
 				}
+				break;
 			}
+			case "function": {
+				const card = functionCards[CardId];
+				if (!card) {
+					console.error("Function card not found:", CardId);
+					return false;
+				}
+
+				if (!currentHand.func[CardId]) {
+					console.error("Card not in hand:", CardId);
+					return false;
+				}
+
+				if (this.state.clocks[player] < card.cost) {
+					console.error("Not enough clock:", player, card.cost);
+					return false;
+				}
+
+				const boardWidth = this.state.board[0].length;
+				const boardHeight = this.state.board.length;
+
+				const cardWidth = card.shape[0].length;
+				const cardHeight = card.shape.length;
+
+				if (
+					x < 0 ||
+					y < 0 ||
+					x + cardWidth > boardWidth ||
+					y + cardHeight > boardHeight
+				) {
+					console.error("Out of bounds:", x, y);
+					return false;
+				}
+
+				for (let dy = 0; dy < cardHeight; dy++) {
+					for (let dx = 0; dx < cardWidth; dx++) {
+						if (card.shape[dy][dx] === 1) {
+							const boardCell = this.state.board[y + dy][x + dx];
+							if (
+								!boardCell ||
+								boardCell.status !== "reserved" ||
+								boardCell.occupiedBy !== player
+							) {
+								console.error("Cell already used:", x + dx, y + dy);
+								return false;
+							}
+						}
+					}
+				}
+
+				break;
+			}
+			case "event": {
+				break;
+			}
+			default:
+				return type satisfies never;
 		}
 
 		return true;
 	}
 
-	reserveMemoryOnBoard(
+	mutateBoard(
 		playerId: string,
 		x: number,
 		y: number,
-		cardShape: (0 | 1)[][],
+		type: "memory" | "function" | "event",
+		cardShape?: (0 | 1)[][],
 	) {
 		if (!this.state) throw new Error("Game state is not initialized");
-		for (let dy = 0; dy < cardShape.length; dy++) {
-			for (let dx = 0; dx < cardShape[dy].length; dx++) {
-				if (cardShape[dy][dx] === 1) {
-					this.state.board[y + dy][x + dx] = {
-						status: "reserved",
-						occupiedBy: playerId,
-					};
+		if (!cardShape) {
+			throw new Error("Card shape is required for memory type");
+		}
+		switch (type) {
+			case "memory": {
+				for (let dy = 0; dy < cardShape.length; dy++) {
+					for (let dx = 0; dx < cardShape[dy].length; dx++) {
+						if (cardShape[dy][dx] === 1) {
+							this.state.board[y + dy][x + dx] = {
+								status: "reserved",
+								occupiedBy: playerId,
+							};
+						}
+					}
 				}
+				break;
 			}
+			case "function": {
+				for (let dy = 0; dy < cardShape.length; dy++) {
+					for (let dx = 0; dx < cardShape[dy].length; dx++) {
+						if (cardShape[dy][dx] === 1) {
+							this.state.board[y + dy][x + dx] = {
+								status: "used",
+								occupiedBy: playerId,
+							};
+						}
+					}
+				}
+				break;
+			}
+			case "event": {
+				break;
+			}
+			default:
+				return type satisfies never;
 		}
 	}
 }
