@@ -18,9 +18,12 @@ import {
 } from "./magic";
 import { Matching } from "./matching";
 
+import { Memory } from "./memory";
+
 type Bindings = {
 	MAGIC: DurableObjectNamespace;
 	MATCHING: DurableObjectNamespace;
+	MEMORY: DurableObjectNamespace;
 	DATABASE_URL: string;
 	ENV: string;
 };
@@ -31,6 +34,8 @@ type Variables = {
 	db: PostgresJsDatabase<typeof schema>;
 	user: User;
 };
+
+type GameTitles = "magic-square" | "memory-optimization";
 
 // TODO: 環境変数にする
 const secret = "hoge";
@@ -128,6 +133,20 @@ const apiApp = new Hono<{
 
 		return c.json(newUser, 201);
 	})
+	.patch("/users/me", authMiddleware, async (c) => {
+		const user = c.get("user");
+		const db = c.get("db");
+		const { newName } = await c.req.json<{ newName: string }>();
+		if (!newName) {
+			throw new HTTPException(400, { message: "New name is required" });
+		}
+		const [updatedUser] = await db
+			.update(schema.users)
+			.set({ name: newName })
+			.where(eq(schema.users.id, user.id))
+			.returning();
+		return c.json(updatedUser, 200);
+	})
 
 	// Room routes
 	.get("/rooms", async (c) => {
@@ -139,9 +158,14 @@ const apiApp = new Hono<{
 		const db = c.get("db");
 		const user = c.get("user");
 
-		const { name } = await c.req.json<{ name: string }>();
-		if (!name) {
-			throw new HTTPException(400, { message: "Room name is required" });
+		const { name, gameTitle } = await c.req.json<{
+			name: string;
+			gameTitle: GameTitles;
+		}>();
+		if (!name || !gameTitle) {
+			throw new HTTPException(400, {
+				message: "Room name and game title are required",
+			});
 		}
 
 		const roomSecret = Math.floor(100000 + Math.random() * 900000).toString();
@@ -152,6 +176,7 @@ const apiApp = new Hono<{
 			.values({
 				id: roomId,
 				name,
+				gameTitle: gameTitle,
 				hostId: user.id,
 				users: [user.id],
 				matchingType: "room",
@@ -289,15 +314,32 @@ const apiApp = new Hono<{
 			throw new HTTPException(403, { message: "Unauthorized" });
 		}
 
-		const id = c.env.MAGIC.idFromName(roomId);
-		const stub = c.env.MAGIC.get(id);
+		switch (room.gameTitle) {
+			case "magic-square": {
+				const id = c.env.MAGIC.idFromName(roomId);
+				const stub = c.env.MAGIC.get(id);
 
-		const url = new URL(c.req.url);
-		url.searchParams.set("playerId", user.id);
+				const url = new URL(c.req.url);
+				url.searchParams.set("playerId", user.id);
 
-		const request = new Request(url.toString(), c.req.raw);
-		return stub.fetch(request);
+				const request = new Request(url.toString(), c.req.raw);
+				return stub.fetch(request);
+			}
+			case "memory-optimization": {
+				const id = c.env.MEMORY.idFromName(roomId);
+				const stub = c.env.MEMORY.get(id);
+
+				const url = new URL(c.req.url);
+				url.searchParams.set("playerId", user.id);
+
+				const request = new Request(url.toString(), c.req.raw);
+				return stub.fetch(request);
+			}
+			default:
+				throw new HTTPException(400, { message: "Invalid game title" });
+		}
 	})
+
 	.get("/matching/ws", authMiddleware, async (c) => {
 		const user = c.get("user");
 
@@ -319,4 +361,4 @@ export type AppType = typeof apiApp;
 export default apiApp;
 
 export type { GameState, MoveAction, MessageType, Rule, Operation };
-export { Magic, Matching };
+export { Magic, Memory };

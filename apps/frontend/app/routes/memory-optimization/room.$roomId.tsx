@@ -1,16 +1,49 @@
 /** biome-ignore-all lint/a11y/noStaticElementInteractions: TODO */
 /** biome-ignore-all lint/suspicious/noArrayIndexKey: TODO */
 /** biome-ignore-all lint/a11y/useKeyWithClickEvents: TODO */
-import type {
-	GameState,
-	MessageType,
-	Operation,
-	Rule,
-	User,
-} from "@apps/backend";
+import type { GameState, MessageType, Operation, Rule } from "@apps/backend";
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useOutletContext, useParams } from "react-router";
-import { client } from "../../lib/client";
+import {
+	type ClientLoaderFunctionArgs,
+	redirect,
+	useLoaderData,
+	useNavigate,
+	useParams,
+} from "react-router";
+import { client } from "~/lib/client";
+
+export async function clientLoader({ params }: ClientLoaderFunctionArgs) {
+	const roomId = params.roomId;
+	if (!roomId) throw new Error("Room ID is required");
+
+	const [userRes, roomRes, roomSecretRes] = await Promise.all([
+		client.users.me.$get(),
+		client.rooms[":roomId"].$get({ param: { roomId } }),
+		client.rooms[":roomId"].secret.$get({
+			param: { roomId },
+		}),
+	]);
+
+	if (!userRes.ok || !roomRes.ok || !roomSecretRes.ok) {
+		return redirect("/magic-square");
+	}
+
+	const user = await userRes.json();
+	const roomData = await roomRes.json();
+	const roomSecretData = await roomSecretRes.json();
+
+	const createdAt = user.createdAt ? new Date(user.createdAt) : null;
+
+	if (!roomData.users.includes(user.id)) {
+		return redirect("/magic-square");
+	}
+
+	return {
+		user: { ...user, createdAt },
+		secret: roomSecretData.secret,
+		hostId: roomData.hostId,
+	};
+}
 
 // --- Game Components ---
 
@@ -185,16 +218,11 @@ function TurnDisplay({
 }
 
 export default function RoomPage() {
-	const context = useOutletContext<{
-		user: User;
-		secret: string;
-		hostId: string;
-	} | null>();
-	if (!context) {
-		throw new Error("Context is null");
-	}
-
-	const { user, secret: roomSecret, hostId: roomHost } = context;
+	const {
+		user,
+		secret: roomSecret,
+		hostId: roomHost,
+	} = useLoaderData<typeof clientLoader>();
 
 	const { roomId } = useParams();
 	const navigate = useNavigate();
@@ -205,8 +233,13 @@ export default function RoomPage() {
 		: null;
 	const ws = useRef<WebSocket | null>(null);
 
+	const activePlayerIds = user
+		? (gameState?.players.filter(
+				(p) => gameState?.playerStatus[p] === "playing",
+			) ?? null)
+		: null;
 	const opponentIds = user
-		? (gameState?.players.filter((p) => p !== user.id) ?? null)
+		? (activePlayerIds?.filter((p) => p !== user.id) ?? null)
 		: null;
 	const currentPlayerId = gameState?.players[gameState.turn] ?? null;
 
@@ -215,6 +248,9 @@ export default function RoomPage() {
 
 	const [winnerDisplay, setWinnerDisplay] = useState(0);
 	const [remainingTime, setRemainingTime] = useState(0);
+	const [spectatedPlayerId, setSpectatedPlayerId] = useState<string | null>(
+		null,
+	);
 
 	// WebSocket connection effect
 	useEffect(() => {
@@ -305,7 +341,11 @@ export default function RoomPage() {
 	};
 
 	const handleReadyClick = () => {
-		sendWsMessage({ type: "setReady" });
+		if (myStatus === "ready") {
+			sendWsMessage({ type: "cancelReady" });
+		} else {
+			sendWsMessage({ type: "setReady" });
+		}
 	};
 
 	const handleRuleChange = (rule: Rule) => {
@@ -324,7 +364,7 @@ export default function RoomPage() {
 		if (roomId) {
 			await client.rooms[":roomId"].leave.$post({ param: { roomId } });
 		}
-		navigate("/logic-puzzle/lobby");
+		navigate("/magic-square");
 	};
 
 	// --- Render Logic ---
@@ -351,6 +391,132 @@ export default function RoomPage() {
 		);
 	}
 
+	if (myStatus === "spectating") {
+		if (!currentPlayerId) {
+			throw new Error("Current player ID is missing");
+		}
+
+		const playingPlayers = gameState.players.filter(
+			(p) => gameState.playerStatus[p] === "playing",
+		);
+
+		const spectatedPlayer = spectatedPlayerId
+			? {
+					id: spectatedPlayerId,
+					name: gameState.names[spectatedPlayerId],
+					hand: gameState.hands[spectatedPlayerId],
+					mission: gameState.missions[spectatedPlayerId],
+				}
+			: null;
+
+		return (
+			<div className="p-4 md:p-8 flex flex-col gap-4">
+				<h1 className="text-2xl font-bold text-center">Watching Game</h1>
+
+				{/* Player perspective switcher */}
+				<div className="flex justify-center gap-2 p-2 bg-base-200 rounded-lg">
+					<button
+						type="button"
+						className={`btn ${!spectatedPlayerId ? "btn-primary" : ""}`}
+						onClick={() => setSpectatedPlayerId(null)}
+					>
+						Overview
+					</button>
+					{playingPlayers.map((pId) => (
+						<button
+							key={pId}
+							type="button"
+							className={`btn ${spectatedPlayerId === pId ? "btn-primary" : ""}`}
+							onClick={() => setSpectatedPlayerId(pId)}
+						>
+							{gameState.names[pId]}
+						</button>
+					))}
+				</div>
+
+				{/* Opponents' Missions */}
+				<div className="flex justify-center gap-4 mb-4">
+					{spectatedPlayer
+						? // Single player perspective
+							playingPlayers
+								.filter((pId) => pId !== spectatedPlayer.id)
+								.map((opponentId) =>
+									gameState.missions[opponentId] ? (
+										<Mission
+											key={opponentId}
+											title={`${gameState.names[opponentId]}'s mission`}
+											description={
+												gameState.missions[opponentId]?.mission.description
+											}
+										/>
+									) : null,
+								)
+						: null}
+				</div>
+
+				{/* Game Board */}
+				<div className="w-full max-w-md mx-auto">
+					<TurnDisplay
+						round={gameState.round}
+						currentPlayerId={currentPlayerId}
+						currentPlayerName={gameState.names[currentPlayerId]}
+						myId={user.id} // Will never be "Your Turn"
+						remainingTime={Math.ceil(remainingTime / 1000)}
+					/>
+					<GameBoard board={gameState.board} onCellClick={() => {}} />
+				</div>
+
+				{/* Player's Info (Hand and Mission) */}
+				<div className="flex flex-col items-center gap-4 mt-4">
+					{spectatedPlayer ? (
+						<>
+							<Mission
+								title={`${spectatedPlayer.name}'s mission`}
+								description={spectatedPlayer.mission?.mission.description}
+							/>
+							<Hand
+								cards={spectatedPlayer.hand}
+								onCardClick={() => {}}
+								selectedNumIndex={null}
+							/>
+						</>
+					) : (
+						<div>
+							{
+								// Overview perspective
+								playingPlayers.map((playerId) =>
+									gameState.missions[playerId] ? (
+										<div className="flex" key={playerId}>
+											<div className="ml-0">
+												<Mission
+													key={playerId}
+													title={`${gameState.names[playerId]}'s mission`}
+													description={
+														gameState.missions[playerId]?.mission.description
+													}
+												/>
+											</div>
+											<div className="ml-auto">
+												<Hand
+													cards={gameState.hands[playerId]}
+													onCardClick={() => {}}
+													selectedNumIndex={null}
+												/>
+											</div>
+										</div>
+									) : null,
+								)
+							}
+							<div className="text-center mt-4 p-4 bg-base-200 rounded-lg">
+								<h2 className="text-xl font-bold">You are watching</h2>
+								<p>Select a player above to see their perspective.</p>
+							</div>
+						</div>
+					)}
+				</div>
+			</div>
+		);
+	}
 	if (myStatus === "preparing" || myStatus === "ready") {
 		return (
 			<div className="flex h-screen w-full flex-col items-center justify-center gap-8">
@@ -369,13 +535,28 @@ export default function RoomPage() {
 							key={playerId}
 							className="flex items-center justify-between gap-4 p-2"
 						>
-							<span className="font-medium">{gameState.names[playerId]}</span>
+							<span className="font-medium">
+								{gameState.names[playerId]}
+								{playerId === roomHost && (
+									<span className="badge badge-primary badge-sm ml-2">
+										Host
+									</span>
+								)}
+							</span>
 							<span
-								className={`rounded-full px-3 py-1 text-sm font-semibold ${gameState.playerStatus[playerId] === "ready" ? "bg-green-500 text-white" : "bg-gray-300 text-gray-700"}`}
+								className={`rounded-full px-3 py-1 text-sm font-semibold ${
+									gameState.playerStatus[playerId] === "ready"
+										? "bg-green-500 text-white"
+										: gameState.playerStatus[playerId] === "error"
+											? "bg-red-500 text-white"
+											: "bg-gray-300 text-gray-700"
+								}`}
 							>
 								{gameState.playerStatus[playerId] === "ready"
 									? "Ready!"
-									: "Preparing..."}
+									: gameState.playerStatus[playerId] === "error"
+										? "Error"
+										: "Preparing..."}
 							</span>
 						</li>
 					))}
@@ -593,6 +774,7 @@ export default function RoomPage() {
 		}
 		return (
 			<div className="p-4 md:p-8 flex flex-col gap-4">
+				<div className="font-semibold">Password:{roomSecret}</div>
 				{/* Opponent's Info */}
 				{opponentIds && (
 					<div className="flex justify-center gap-4 mb-4">
@@ -671,8 +853,8 @@ export default function RoomPage() {
 				<p className="mt-4">
 					An error occurred in the game. Please try again later.
 				</p>
-				<a href="/logic-puzzle/lobby" className="btn btn-primary mt-4">
-					Go to Lobby
+				<a href="/magic-square" className="btn btn-primary mt-4">
+					Go back
 				</a>
 			</div>
 		);

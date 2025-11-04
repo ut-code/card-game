@@ -8,6 +8,9 @@
 		"lib": ["ESNext"],
 		"jsx": "react-jsx",
 		"jsxImportSource": "hono/jsx",
-		"types": ["@cloudflare/workers-types"]
+		"types": ["@cloudflare/workers-types", "bun-types"],
+		"paths": {
+			"cloudflare:workers": ["./src/test/mocks/cloudflare-workers.ts"]
+		}
 	}
 }

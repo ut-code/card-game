@@ -7,10 +7,16 @@ import {
 
 export default [
 	index("routes/home.tsx"),
-	route("logic-puzzle", "routes/logic-puzzle.tsx"),
-	layout("routes/logic-puzzle/root.tsx", [
-		route("logic-puzzle/lobby", "routes/logic-puzzle/lobby.tsx"),
+	layout("routes/magic-square/layout.tsx", [
+		route("magic-square", "routes/magic-square/home.tsx"),
 		route("logic-puzzle/matching", "routes/logic-puzzle/matching.tsx"),
-		route("logic-puzzle/room/:roomId", "routes/logic-puzzle/room.$roomId.tsx"),
+		route("magic-square/room/:roomId", "routes/magic-square/room.$roomId.tsx"),
+	]),
+	layout("routes/memory-optimization/layout.tsx", [
+		route("memory-optimization", "routes/memory-optimization/home.tsx"),
+		route(
+			"memory-optimization/room/:roomId",
+			"routes/memory-optimization/room.$roomId.tsx",
+		),
 	]),
 ] satisfies RouteConfig;

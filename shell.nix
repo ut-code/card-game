@@ -4,6 +4,5 @@ pkgs.mkShell {
   buildInputs = [
     pkgs.nodejs
     pkgs.bun
-    pkgs.prisma-engines
   ];
 }

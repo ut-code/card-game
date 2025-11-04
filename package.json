@@ -15,7 +15,7 @@
 		"dev": "bun run --filter='@apps/{frontend,backend}' dev",
 		"dev:frontend": "cd ./apps/frontend && bun run dev",
 		"dev:backend": "cd ./apps/backend && bun run dev",
-		"db": "cd ./apps/backend && bun run db",
+		"db:push": "cd ./apps/backend && bun run db:push",
 		"fix": "bunx --bun biome check --write .",
 		"fix:format": "bunx --bun biome format --write .",
 		"fix:lint": "bunx --bun biome lint --write .",
@@ -31,6 +31,7 @@
 		"apps/*"
 	],
 	"dependencies": {
-		"@types/node": "^24.5.1"
+		"@types/node": "^24.5.1",
+		"drizzle-orm": "^0.44.6"
 	}
 }
