@@ -206,7 +206,7 @@ export class Memory extends RoomMatch<GameState> {
 		const size = this.state.rules.boardSize;
 		this.state.board = Array(size)
 			.fill(null)
-			.map(() => Array(size).fill(null));
+			.map(() => Array(size).fill({ status: "free" }));
 		this.state.round = 0;
 		this.state.turn = 0;
 		this.state.winners = null;

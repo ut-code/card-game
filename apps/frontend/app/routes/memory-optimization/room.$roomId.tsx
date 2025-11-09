@@ -1,7 +1,14 @@
 /** biome-ignore-all lint/a11y/noStaticElementInteractions: TODO */
 /** biome-ignore-all lint/suspicious/noArrayIndexKey: TODO */
 /** biome-ignore-all lint/a11y/useKeyWithClickEvents: TODO */
-import type { GameState, MessageType, Operation, Rule } from "@apps/backend";
+import type {
+	CellState,
+	FunctionCard,
+	GameState,
+	MemoryCard,
+	MessageType,
+	Rule,
+} from "@apps/backend/memory";
 import { useEffect, useRef, useState } from "react";
 import {
 	type ClientLoaderFunctionArgs,
@@ -25,7 +32,7 @@ export async function clientLoader({ params }: ClientLoaderFunctionArgs) {
 	]);
 
 	if (!userRes.ok || !roomRes.ok || !roomSecretRes.ok) {
-		return redirect("/magic-square");
+		return redirect("/memory-optimization");
 	}
 
 	const user = await userRes.json();
@@ -35,7 +42,7 @@ export async function clientLoader({ params }: ClientLoaderFunctionArgs) {
 	const createdAt = user.createdAt ? new Date(user.createdAt) : null;
 
 	if (!roomData.users.includes(user.id)) {
-		return redirect("/magic-square");
+		return redirect("/memory-optimization");
 	}
 
 	return {
@@ -49,10 +56,10 @@ export async function clientLoader({ params }: ClientLoaderFunctionArgs) {
 
 function GameBoard({
 	board,
-	onCellClick,
+	// onCellClick,
 }: {
-	board: (number | null)[][];
-	onCellClick: (x: number, y: number) => void;
+	board: CellState[][];
+	// onCellClick: (x: number, y: number) => void;
 }) {
 	return (
 		<div
@@ -64,9 +71,13 @@ function GameBoard({
 					<div
 						key={`${x}-${y}`}
 						className="aspect-square bg-base-100 rounded flex items-center justify-center text-6xl font-bold cursor-pointer hover:bg-primary hover:text-primary-content transition-colors duration-150"
-						onClick={() => onCellClick(x, y)}
+						// onClick={() => onCellClick(x, y)}
 					>
-						{cell}
+						{cell.status === "reserved"
+							? "R"
+							: cell.status === "used"
+								? "U"
+								: ""}
 					</div>
 				)),
 			)}
@@ -74,37 +85,72 @@ function GameBoard({
 	);
 }
 
-function FinalGameBoard({
-	board,
-	winnerary,
+// function FinalGameBoard({
+//   board,
+//   winnerary,
+// }: {
+//   board: (number | null)[][];
+//   winnerary: (true | false)[][];
+// }) {
+//   return (
+//     <div
+//       className="aspect-square bg-base-300 grid gap-2 p-2 rounded-lg shadow-inner"
+//       style={{ gridTemplateColumns: `repeat(${board.length}, 1fr)` }}
+//     >
+//       {board.map((row, y) =>
+//         row.map((cell, x) =>
+//           winnerary[y][x] === true ? (
+//             <div
+//               key={`${x}-${y}`}
+//               className="aspect-square bg-yellow-500 rounded flex items-center justify-center text-6xl font-bold cursor-pointer transition-colors duration-150"
+//             >
+//               {cell}
+//             </div>
+//           ) : (
+//             <div
+//               key={`${x}-${y}`}
+//               className="aspect-square bg-base-100 rounded flex items-center justify-center text-6xl font-bold cursor-pointer transition-colors duration-150"
+//             >
+//               {cell}
+//             </div>
+//           )
+//         )
+//       )}
+//     </div>
+//   );
+// }
+
+function Shape({
+	card,
+	cellSz,
 }: {
-	board: (number | null)[][];
-	winnerary: (true | false)[][];
+	card: MemoryCard | FunctionCard;
+	cellSz: number;
 }) {
 	return (
-		<div
-			className="aspect-square bg-base-300 grid gap-2 p-2 rounded-lg shadow-inner"
-			style={{ gridTemplateColumns: `repeat(${board.length}, 1fr)` }}
-		>
-			{board.map((row, y) =>
-				row.map((cell, x) =>
-					winnerary[y][x] === true ? (
+		<div className="items-center h-full">
+			<div
+				className="grid gap-px"
+				style={{
+					gridTemplateRows: `repeat(${card.shape.length}, 1fr)`,
+					gridTemplateColumns: `repeat(${card.shape[0].length}, 1fr)`,
+				}}
+			>
+				{card.shape.map((row, y) =>
+					row.map((cell, x) => (
 						<div
-							key={`${x}-${y}`}
-							className="aspect-square bg-yellow-500 rounded flex items-center justify-center text-6xl font-bold cursor-pointer transition-colors duration-150"
+							key={`${y}-${x}`}
+							className={`w-${cellSz} h-${cellSz} ${
+								cell === 1 ? "bg-white" : "bg-transparent"
+							} flex items-center justify-center`}
 						>
-							{cell}
+							{x === 0 && y === 0 ? (
+								<div className={`w-2 h-2 rounded-xl bg-red-500`}></div>
+							) : null}
 						</div>
-					) : (
-						<div
-							key={`${x}-${y}`}
-							className="aspect-square bg-base-100 rounded flex items-center justify-center text-6xl font-bold cursor-pointer transition-colors duration-150"
-						>
-							{cell}
-						</div>
-					),
-				),
-			)}
+					)),
+				)}
+			</div>
 		</div>
 	);
 }
@@ -114,7 +160,7 @@ function Hand({
 	onCardClick,
 	selectedNumIndex,
 }: {
-	cards: number[];
+	cards: MemoryCard[];
 	onCardClick: (i: number) => void;
 	selectedNumIndex: number | null;
 }) {
@@ -124,10 +170,13 @@ function Hand({
 				{cards.map((card, i) => (
 					<div
 						key={i}
-						className={`card w-16 h-24 ${selectedNumIndex === i ? "bg-accent" : "bg-primary"} text-primary-content shadow-lg flex items-center justify-center cursor-pointer hover:bg-accent transition-colors duration-150`}
+						className={`card w-24 h-32 p-2 ${
+							selectedNumIndex === i ? "bg-accent" : "bg-primary"
+						} text-primary-content shadow-lg flex flex-col items-center cursor-pointer hover:bg-accent transition-colors duration-150`}
 						onClick={() => onCardClick(i)}
 					>
-						<span className="text-4xl font-bold">{card}</span>
+						<span className="mt-2 text-lg font-bold mr-auto">{card.cost}</span>
+						<Shape card={card} cellSz={5} />
 					</div>
 				))}
 			</div>
@@ -135,47 +184,50 @@ function Hand({
 	);
 }
 
-function Operations({
-	onOperationClick,
-	selectedOperation,
-}: {
-	onOperationClick: (name: Operation) => void;
-	selectedOperation: Operation;
-}) {
+// function Operations({
+//   onOperationClick,
+//   selectedOperation,
+// }: {
+//   onOperationClick: (name: Operation) => void;
+//   selectedOperation: Operation;
+// }) {
+//   return (
+//     <div>
+//       Operation
+//       {/* <div className="flex gap-2 justify-center p-2 bg-base-200 rounded-lg">
+// 				<div
+// 					className={`card w-12 h-12 ${selectedOperation === "add" ? "bg-accent" : "bg-primary"} text-primary-content shadow-lg flex items-center justify-center cursor-pointer hover:bg-accent transition-colors duration-150`}
+// 					onClick={() => onOperationClick("add")}
+// 				>
+// 					<span className="text-4xl font-bold">+</span>
+// 				</div>
+// 				<div
+// 					className={`card w-12 h-12 ${selectedOperation === "sub" ? "bg-accent" : "bg-primary"} text-primary-content shadow-lg flex items-center justify-center cursor-pointer hover:bg-accent transition-colors duration-150`}
+// 					onClick={() => onOperationClick("sub")}
+// 				>
+// 					<span className="text-4xl font-bold">-</span>
+// 				</div>
+// 			</div> */}
+//     </div>
+//   );
+// }
+
+function Missions({ title, cards }: { title: string; cards: FunctionCard[] }) {
 	return (
-		<div>
-			<div className="flex gap-2 justify-center p-2 bg-base-200 rounded-lg">
-				<div
-					className={`card w-12 h-12 ${selectedOperation === "add" ? "bg-accent" : "bg-primary"} text-primary-content shadow-lg flex items-center justify-center cursor-pointer hover:bg-accent transition-colors duration-150`}
-					onClick={() => onOperationClick("add")}
-				>
-					<span className="text-4xl font-bold">+</span>
-				</div>
-				<div
-					className={`card w-12 h-12 ${selectedOperation === "sub" ? "bg-accent" : "bg-primary"} text-primary-content shadow-lg flex items-center justify-center cursor-pointer hover:bg-accent transition-colors duration-150`}
-					onClick={() => onOperationClick("sub")}
-				>
-					<span className="text-4xl font-bold">-</span>
-				</div>
+		<div className="border-2 rounded-lg bg-base-200 p-2 border-secondary">
+			<div className="text-secondary">{title}</div>
+			<div className="flex gap-2 justify-center">
+				{cards.map((card, i) => (
+					<div
+						key={i}
+						className={`card w-24 h-24 p-2 bg-secondary text-primary-content shadow-lg flex flex-col items-center`}
+					>
+						<span className="font-bold mr-auto">{card.cost}</span>
+						<Shape card={card} cellSz={3} />
+					</div>
+				))}
 			</div>
 		</div>
-	);
-}
-
-function Mission({
-	title,
-	description,
-}: {
-	title: string;
-	description: string;
-}) {
-	return (
-		<span className="card bg-secondary text-secondary-content shadow-md">
-			<div className="card-body items-center text-center p-2">
-				<h2 className="card-title text-sm">{title}</h2>
-				<p>{description}</p>
-			</div>
-		</span>
 	);
 }
 
@@ -244,13 +296,13 @@ export default function RoomPage() {
 	const currentPlayerId = gameState?.players[gameState.turn] ?? null;
 
 	const [selectedNumIndex, setSelectedNumIndex] = useState<number | null>(null);
-	const [selectedOperation, setSelectedOperation] = useState<Operation>("add");
+	//   const [selectedOperation, setSelectedOperation] = useState<Operation>("add");
 
-	const [winnerDisplay, setWinnerDisplay] = useState(0);
+	// const [winnerDisplay, setWinnerDisplay] = useState(0);
 	const [remainingTime, setRemainingTime] = useState(0);
-	const [spectatedPlayerId, setSpectatedPlayerId] = useState<string | null>(
-		null,
-	);
+	// const [spectatedPlayerId, setSpectatedPlayerId] = useState<string | null>(
+	//   null
+	// );
 
 	// WebSocket connection effect
 	useEffect(() => {
@@ -316,29 +368,29 @@ export default function RoomPage() {
 			ws.current.send(message);
 		}
 	}
-	const handleCellClick = (x: number, y: number) => {
-		if (!gameState || !user || !user.id || selectedNumIndex === null) return;
-		sendWsMessage({
-			type: "makeMove",
-			payload: {
-				x,
-				y,
-				operation: selectedOperation,
-				num: gameState.hands[user.id][selectedNumIndex],
-				numIndex: selectedNumIndex,
-			},
-		});
-		setSelectedNumIndex(null);
-		setSelectedOperation("add");
-	};
+	// const handleCellClick = (x: number, y: number) => {
+	// if (!gameState || !user || !user.id || selectedNumIndex === null) return;
+	// sendWsMessage({
+	// 	type: "makeMove",
+	// 	payload: {
+	// 		x,
+	// 		y,
+	// 		operation: selectedOperation,
+	// 		num: gameState.hands[user.id][selectedNumIndex],
+	// 		numIndex: selectedNumIndex,
+	// 	},
+	// });
+	// setSelectedNumIndex(null);
+	// setSelectedOperation("add");
+	// };
 
-	const handleWinnersPlusClick = () => {
-		setWinnerDisplay(winnerDisplay + 1);
-	};
+	// const handleWinnersPlusClick = () => {
+	//   setWinnerDisplay(winnerDisplay + 1);
+	// };
 
-	const handleWinnersMinusClick = () => {
-		setWinnerDisplay(winnerDisplay - 1);
-	};
+	// const handleWinnersMinusClick = () => {
+	//   setWinnerDisplay(winnerDisplay - 1);
+	// };
 
 	const handleReadyClick = () => {
 		if (myStatus === "ready") {
@@ -348,23 +400,23 @@ export default function RoomPage() {
 		}
 	};
 
-	const handleRuleChange = (rule: Rule) => {
-		sendWsMessage({
-			type: "changeRule",
-			payload: rule,
-		});
-	};
+	// const handleRuleChange = (rule: Rule) => {
+	// sendWsMessage({
+	// 	type: "changeRule",
+	// 	payload: rule,
+	// });
+	// };
 
-	const handleBackToLobby = () => {
-		sendWsMessage({ type: "backToLobby" });
-	};
+	// const handleBackToLobby = () => {
+	//   sendWsMessage({ type: "backToLobby" });
+	// };
 
 	const handleLeaveRoom = async () => {
 		sendWsMessage({ type: "removePlayer" });
 		if (roomId) {
 			await client.rooms[":roomId"].leave.$post({ param: { roomId } });
 		}
-		navigate("/magic-square");
+		navigate("/memory-optimization");
 	};
 
 	// --- Render Logic ---
@@ -392,130 +444,123 @@ export default function RoomPage() {
 	}
 
 	if (myStatus === "spectating") {
-		if (!currentPlayerId) {
-			throw new Error("Current player ID is missing");
-		}
-
-		const playingPlayers = gameState.players.filter(
-			(p) => gameState.playerStatus[p] === "playing",
-		);
-
-		const spectatedPlayer = spectatedPlayerId
-			? {
-					id: spectatedPlayerId,
-					name: gameState.names[spectatedPlayerId],
-					hand: gameState.hands[spectatedPlayerId],
-					mission: gameState.missions[spectatedPlayerId],
-				}
-			: null;
-
-		return (
-			<div className="p-4 md:p-8 flex flex-col gap-4">
-				<h1 className="text-2xl font-bold text-center">Watching Game</h1>
-
-				{/* Player perspective switcher */}
-				<div className="flex justify-center gap-2 p-2 bg-base-200 rounded-lg">
-					<button
-						type="button"
-						className={`btn ${!spectatedPlayerId ? "btn-primary" : ""}`}
-						onClick={() => setSpectatedPlayerId(null)}
-					>
-						Overview
-					</button>
-					{playingPlayers.map((pId) => (
-						<button
-							key={pId}
-							type="button"
-							className={`btn ${spectatedPlayerId === pId ? "btn-primary" : ""}`}
-							onClick={() => setSpectatedPlayerId(pId)}
-						>
-							{gameState.names[pId]}
-						</button>
-					))}
-				</div>
-
-				{/* Opponents' Missions */}
-				<div className="flex justify-center gap-4 mb-4">
-					{spectatedPlayer
-						? // Single player perspective
-							playingPlayers
-								.filter((pId) => pId !== spectatedPlayer.id)
-								.map((opponentId) =>
-									gameState.missions[opponentId] ? (
-										<Mission
-											key={opponentId}
-											title={`${gameState.names[opponentId]}'s mission`}
-											description={
-												gameState.missions[opponentId]?.mission.description
-											}
-										/>
-									) : null,
-								)
-						: null}
-				</div>
-
-				{/* Game Board */}
-				<div className="w-full max-w-md mx-auto">
-					<TurnDisplay
-						round={gameState.round}
-						currentPlayerId={currentPlayerId}
-						currentPlayerName={gameState.names[currentPlayerId]}
-						myId={user.id} // Will never be "Your Turn"
-						remainingTime={Math.ceil(remainingTime / 1000)}
-					/>
-					<GameBoard board={gameState.board} onCellClick={() => {}} />
-				</div>
-
-				{/* Player's Info (Hand and Mission) */}
-				<div className="flex flex-col items-center gap-4 mt-4">
-					{spectatedPlayer ? (
-						<>
-							<Mission
-								title={`${spectatedPlayer.name}'s mission`}
-								description={spectatedPlayer.mission?.mission.description}
-							/>
-							<Hand
-								cards={spectatedPlayer.hand}
-								onCardClick={() => {}}
-								selectedNumIndex={null}
-							/>
-						</>
-					) : (
-						<div>
-							{
-								// Overview perspective
-								playingPlayers.map((playerId) =>
-									gameState.missions[playerId] ? (
-										<div className="flex" key={playerId}>
-											<div className="ml-0">
-												<Mission
-													key={playerId}
-													title={`${gameState.names[playerId]}'s mission`}
-													description={
-														gameState.missions[playerId]?.mission.description
-													}
-												/>
-											</div>
-											<div className="ml-auto">
-												<Hand
-													cards={gameState.hands[playerId]}
-													onCardClick={() => {}}
-													selectedNumIndex={null}
-												/>
-											</div>
-										</div>
-									) : null,
-								)
-							}
-							<div className="text-center mt-4 p-4 bg-base-200 rounded-lg">
-								<h2 className="text-xl font-bold">You are watching</h2>
-								<p>Select a player above to see their perspective.</p>
-							</div>
-						</div>
-					)}
-				</div>
-			</div>
-		);
+		// if (!currentPlayerId) {
+		// 	throw new Error("Current player ID is missing");
+		// }
+		// const playingPlayers = gameState.players.filter(
+		// 	(p) => gameState.playerStatus[p] === "playing",
+		// );
+		// const spectatedPlayer = spectatedPlayerId
+		// 	? {
+		// 			id: spectatedPlayerId,
+		// 			name: gameState.names[spectatedPlayerId],
+		// 			hand: gameState.hands[spectatedPlayerId],
+		// 			mission: gameState.missions[spectatedPlayerId],
+		// 		}
+		// 	: null;
+		// return (
+		// 	<div className="p-4 md:p-8 flex flex-col gap-4">
+		// 		<h1 className="text-2xl font-bold text-center">Watching Game</h1>
+		// 		{/* Player perspective switcher */}
+		// 		<div className="flex justify-center gap-2 p-2 bg-base-200 rounded-lg">
+		// 			<button
+		// 				type="button"
+		// 				className={`btn ${!spectatedPlayerId ? "btn-primary" : ""}`}
+		// 				onClick={() => setSpectatedPlayerId(null)}
+		// 			>
+		// 				Overview
+		// 			</button>
+		// 			{playingPlayers.map((pId) => (
+		// 				<button
+		// 					key={pId}
+		// 					type="button"
+		// 					className={`btn ${spectatedPlayerId === pId ? "btn-primary" : ""}`}
+		// 					onClick={() => setSpectatedPlayerId(pId)}
+		// 				>
+		// 					{gameState.names[pId]}
+		// 				</button>
+		// 			))}
+		// 		</div>
+		// 		{/* Opponents' Missions */}
+		// 		<div className="flex justify-center gap-4 mb-4">
+		// 			{spectatedPlayer
+		// 				? // Single player perspective
+		// 					playingPlayers
+		// 						.filter((pId) => pId !== spectatedPlayer.id)
+		// 						.map((opponentId) =>
+		// 							gameState.missions[opponentId] ? (
+		// 								<Mission
+		// 									key={opponentId}
+		// 									title={`${gameState.names[opponentId]}'s mission`}
+		// 									description={
+		// 										gameState.missions[opponentId]?.mission.description
+		// 									}
+		// 								/>
+		// 							) : null,
+		// 						)
+		// 				: null}
+		// 		</div>
+		// 		{/* Game Board */}
+		// 		<div className="w-full max-w-md mx-auto">
+		// 			<TurnDisplay
+		// 				round={gameState.round}
+		// 				currentPlayerId={currentPlayerId}
+		// 				currentPlayerName={gameState.names[currentPlayerId]}
+		// 				myId={user.id} // Will never be "Your Turn"
+		// 				remainingTime={Math.ceil(remainingTime / 1000)}
+		// 			/>
+		// 			<GameBoard board={gameState.board} onCellClick={() => {}} />
+		// 		</div>
+		// 		{/* Player's Info (Hand and Mission) */}
+		// 		<div className="flex flex-col items-center gap-4 mt-4">
+		// 			{spectatedPlayer ? (
+		// 				<>
+		// 					<Mission
+		// 						title={`${spectatedPlayer.name}'s mission`}
+		// 						description={spectatedPlayer.mission?.mission.description}
+		// 					/>
+		// 					<Hand
+		// 						cards={spectatedPlayer.hand}
+		// 						onCardClick={() => {}}
+		// 						selectedNumIndex={null}
+		// 					/>
+		// 				</>
+		// 			) : (
+		// 				<div>
+		// 					{
+		// 						// Overview perspective
+		// 						playingPlayers.map((playerId) =>
+		// 							gameState.missions[playerId] ? (
+		// 								<div className="flex" key={playerId}>
+		// 									<div className="ml-0">
+		// 										<Mission
+		// 											key={playerId}
+		// 											title={`${gameState.names[playerId]}'s mission`}
+		// 											description={
+		// 												gameState.missions[playerId]?.mission.description
+		// 											}
+		// 										/>
+		// 									</div>
+		// 									<div className="ml-auto">
+		// 										<Hand
+		// 											cards={gameState.hands[playerId]}
+		// 											onCardClick={() => {}}
+		// 											selectedNumIndex={null}
+		// 										/>
+		// 									</div>
+		// 								</div>
+		// 							) : null,
+		// 						)
+		// 					}
+		// 					<div className="text-center mt-4 p-4 bg-base-200 rounded-lg">
+		// 						<h2 className="text-xl font-bold">You are watching</h2>
+		// 						<p>Select a player above to see their perspective.</p>
+		// 					</div>
+		// 				</div>
+		// 			)}
+		// 		</div>
+		// 	</div>
+		// );
 	}
 	if (myStatus === "preparing" || myStatus === "ready") {
 		return (
@@ -536,7 +581,7 @@ export default function RoomPage() {
 							className="flex items-center justify-between gap-4 p-2"
 						>
 							<span className="font-medium">
-								{gameState.names[playerId]}
+								{gameState.names?.[playerId] ?? playerId}
 								{playerId === roomHost && (
 									<span className="badge badge-primary badge-sm ml-2">
 										Host
@@ -545,16 +590,16 @@ export default function RoomPage() {
 							</span>
 							<span
 								className={`rounded-full px-3 py-1 text-sm font-semibold ${
-									gameState.playerStatus[playerId] === "ready"
+									gameState.playerStatus?.[playerId] === "ready"
 										? "bg-green-500 text-white"
-										: gameState.playerStatus[playerId] === "error"
+										: gameState.playerStatus?.[playerId] === "error"
 											? "bg-red-500 text-white"
 											: "bg-gray-300 text-gray-700"
 								}`}
 							>
-								{gameState.playerStatus[playerId] === "ready"
+								{gameState.playerStatus?.[playerId] === "ready"
 									? "Ready!"
-									: gameState.playerStatus[playerId] === "error"
+									: gameState.playerStatus?.[playerId] === "error"
 										? "Error"
 										: "Preparing..."}
 							</span>
@@ -568,12 +613,12 @@ export default function RoomPage() {
 							className="select select-bordered"
 							value={gameState.rules.boardSize}
 							disabled={user.id !== roomHost}
-							onChange={(e) =>
-								handleRuleChange({
-									rule: "boardSize",
-									state: parseInt(e.target.value, 10),
-								})
-							}
+							// onChange={(e) =>
+							//   handleRuleChange({
+							//     rule: "boardSize",
+							//     state: parseInt(e.target.value, 10),
+							//   })
+							// }
 						>
 							<option value={1}>1x1</option>
 							<option value={2}>2x2</option>
@@ -591,12 +636,12 @@ export default function RoomPage() {
 							className="toggle toggle-success"
 							checked={gameState.rules.negativeDisabled}
 							disabled={user.id !== roomHost}
-							onChange={(e) =>
-								handleRuleChange({
-									rule: "negativeDisabled",
-									state: e.target.checked,
-								})
-							}
+							// onChange={(e) =>
+							//   handleRuleChange({
+							//     rule: "negativeDisabled",
+							//     state: e.target.checked,
+							//   })
+							// }
 						/>
 					</label>
 				</div>
@@ -607,12 +652,12 @@ export default function RoomPage() {
 							className="select select-bordered"
 							value={gameState.rules.timeLimit}
 							disabled={user.id !== roomHost}
-							onChange={(e) =>
-								handleRuleChange({
-									rule: "timeLimit",
-									state: parseInt(e.target.value),
-								})
-							}
+							// onChange={(e) =>
+							//   handleRuleChange({
+							//     rule: "timeLimit",
+							//     state: parseInt(e.target.value),
+							//   })
+							// }
 						>
 							<option value={5}>5s</option>
 							<option value={10}>10s</option>
@@ -639,133 +684,133 @@ export default function RoomPage() {
 	}
 
 	if (myStatus === "finished") {
-		if (!gameState.winners || gameState.winners.length === 0) {
-			throw new Error("Winners data is missing");
-		}
-		if (winnerDisplay === 0) {
-			return (
-				<div>
-					<div className="flex justify-center gap-4 mb-12 text-red-500">
-						<h1 className="text-3xl font-bold">GAME SET</h1>
-					</div>
-					{gameState.winners && (
-						<div className="flex justify-center gap-4 mb-12">
-							{gameState.winners.map((winnersId) => (
-								<h1 key={winnersId} className="text-3xl font-bold">
-									{gameState.names[winnersId]}
-								</h1>
-							))}
-							<h1 className="text-3xl font-bold">WIN!!</h1>
-						</div>
-					)}
-					<div className="w-full max-w-md mx-auto">
-						<FinalGameBoard
-							board={gameState.board}
-							winnerary={Array.from({ length: gameState.rules.boardSize }, () =>
-								Array(gameState?.rules.boardSize).fill(false),
-							)}
-						/>
-					</div>
-					<div className="card-actions justify-center mt-4">
-						<button
-							className="btn btn-primary"
-							type="button"
-							onClick={handleWinnersPlusClick}
-						>
-							Next
-						</button>
-					</div>
-				</div>
-			);
-		}
-		if (winnerDisplay === gameState.winners.length) {
-			return (
-				<div>
-					<div className="flex justify-center gap-4 mb-4">
-						<h1 className="text-3xl font-bold">
-							Result {winnerDisplay}/{gameState.winners.length}
-						</h1>
-					</div>
-					<div className="flex justify-center gap-4 mb-4">
-						<Mission
-							key={gameState.winners[winnerDisplay - 1]}
-							title={`${gameState?.names[gameState.winners[winnerDisplay - 1]]}'s mission`}
-							description={
-								gameState.missions[gameState.winners[winnerDisplay - 1]].mission
-									.description
-							}
-						/>
-					</div>
-					<div className="w-full max-w-md mx-auto">
-						<FinalGameBoard
-							board={gameState.board}
-							winnerary={
-								gameState.winnersAry[gameState.winners[winnerDisplay - 1]]
-							}
-						/>
-					</div>
-					<div className="card-actions mt-4  justify-center">
-						<button
-							className="btn btn-primary"
-							type="button"
-							onClick={handleWinnersMinusClick}
-						>
-							Back
-						</button>
-						<button
-							className="btn btn-primary"
-							onClick={handleBackToLobby}
-							type="button"
-						>
-							to Lobby
-						</button>
-					</div>
-				</div>
-			);
-		}
-		return (
-			<div>
-				<div className="flex justify-center gap-4 mb-4">
-					<h1 className="text-3xl font-bold">
-						Result {winnerDisplay}/{gameState.winners.length}
-					</h1>
-				</div>
-				<div className="flex justify-center gap-4 mb-4">
-					<Mission
-						key={gameState.winners[winnerDisplay - 1]}
-						title={`${gameState.names[gameState.winners[winnerDisplay - 1]]}'s mission`}
-						description={
-							gameState.missions[gameState.winners[winnerDisplay - 1]].mission
-								.description
-						}
-					/>
-				</div>
-				<div className="w-full max-w-md mx-auto">
-					<FinalGameBoard
-						board={gameState.board}
-						winnerary={
-							gameState.winnersAry[gameState.winners[winnerDisplay - 1]]
-						}
-					/>
-				</div>
-				<div className="card-actions justify-center mt-4">
-					<button
-						className="btn btn-primary"
-						type="button"
-						onClick={handleWinnersMinusClick}
-					>
-						Back
-					</button>
-					<button
-						className="btn btn-primary"
-						type="button"
-						onClick={handleWinnersPlusClick}
-					>
-						Next
-					</button>
-				</div>
-			</div>
-		);
+		// if (!gameState.winners || gameState.winners.length === 0) {
+		// 	throw new Error("Winners data is missing");
+		// }
+		// if (winnerDisplay === 0) {
+		// 	return (
+		// 		<div>
+		// 			<div className="flex justify-center gap-4 mb-12 text-red-500">
+		// 				<h1 className="text-3xl font-bold">GAME SET</h1>
+		// 			</div>
+		// 			{gameState.winners && (
+		// 				<div className="flex justify-center gap-4 mb-12">
+		// 					{gameState.winners.map((winnersId) => (
+		// 						<h1 key={winnersId} className="text-3xl font-bold">
+		// 							{gameState.names[winnersId]}
+		// 						</h1>
+		// 					))}
+		// 					<h1 className="text-3xl font-bold">WIN!!</h1>
+		// 				</div>
+		// 			)}
+		// 			<div className="w-full max-w-md mx-auto">
+		// 				<FinalGameBoard
+		// 					board={gameState.board}
+		// 					winnerary={Array.from({ length: gameState.rules.boardSize }, () =>
+		// 						Array(gameState?.rules.boardSize).fill(false),
+		// 					)}
+		// 				/>
+		// 			</div>
+		// 			<div className="card-actions justify-center mt-4">
+		// 				<button
+		// 					className="btn btn-primary"
+		// 					type="button"
+		// 					onClick={handleWinnersPlusClick}
+		// 				>
+		// 					Next
+		// 				</button>
+		// 			</div>
+		// 		</div>
+		// 	);
+		// }
+		// if (winnerDisplay === gameState.winners.length) {
+		// 	return (
+		// 		<div>
+		// 			<div className="flex justify-center gap-4 mb-4">
+		// 				<h1 className="text-3xl font-bold">
+		// 					Result {winnerDisplay}/{gameState.winners.length}
+		// 				</h1>
+		// 			</div>
+		// 			<div className="flex justify-center gap-4 mb-4">
+		// 				<Mission
+		// 					key={gameState.winners[winnerDisplay - 1]}
+		// 					title={`${gameState?.names[gameState.winners[winnerDisplay - 1]]}'s mission`}
+		// 					description={
+		// 						gameState.missions[gameState.winners[winnerDisplay - 1]].mission
+		// 							.description
+		// 					}
+		// 				/>
+		// 			</div>
+		// 			<div className="w-full max-w-md mx-auto">
+		// 				<FinalGameBoard
+		// 					board={gameState.board}
+		// 					winnerary={
+		// 						gameState.winnersAry[gameState.winners[winnerDisplay - 1]]
+		// 					}
+		// 				/>
+		// 			</div>
+		// 			<div className="card-actions mt-4  justify-center">
+		// 				<button
+		// 					className="btn btn-primary"
+		// 					type="button"
+		// 					onClick={handleWinnersMinusClick}
+		// 				>
+		// 					Back
+		// 				</button>
+		// 				<button
+		// 					className="btn btn-primary"
+		// 					onClick={handleBackToLobby}
+		// 					type="button"
+		// 				>
+		// 					to Lobby
+		// 				</button>
+		// 			</div>
+		// 		</div>
+		// 	);
+		// }
+		// return (
+		// 	<div>
+		// 		<div className="flex justify-center gap-4 mb-4">
+		// 			<h1 className="text-3xl font-bold">
+		// 				Result {winnerDisplay}/{gameState.winners.length}
+		// 			</h1>
+		// 		</div>
+		// 		<div className="flex justify-center gap-4 mb-4">
+		// 			<Mission
+		// 				key={gameState.winners[winnerDisplay - 1]}
+		// 				title={`${gameState.names[gameState.winners[winnerDisplay - 1]]}'s mission`}
+		// 				description={
+		// 					gameState.missions[gameState.winners[winnerDisplay - 1]].mission
+		// 						.description
+		// 				}
+		// 			/>
+		// 		</div>
+		// 		<div className="w-full max-w-md mx-auto">
+		// 			<FinalGameBoard
+		// 				board={gameState.board}
+		// 				winnerary={
+		// 					gameState.winnersAry[gameState.winners[winnerDisplay - 1]]
+		// 				}
+		// 			/>
+		// 		</div>
+		// 		<div className="card-actions justify-center mt-4">
+		// 			<button
+		// 				className="btn btn-primary"
+		// 				type="button"
+		// 				onClick={handleWinnersMinusClick}
+		// 			>
+		// 				Back
+		// 			</button>
+		// 			<button
+		// 				className="btn btn-primary"
+		// 				type="button"
+		// 				onClick={handleWinnersPlusClick}
+		// 			>
+		// 				Next
+		// 			</button>
+		// 		</div>
+		// 	</div>
+		// );
 	}
 
 	if (myStatus === "playing") {
@@ -779,12 +824,10 @@ export default function RoomPage() {
 				{opponentIds && (
 					<div className="flex justify-center gap-4 mb-4">
 						{opponentIds.map((opponentId) => (
-							<Mission
+							<Missions
 								key={opponentId}
-								title={`${gameState?.names[opponentId]}'s mission`}
-								description={
-									gameState?.missions[opponentId]?.mission.description
-								}
+								title={`${gameState?.names[opponentId]}'s functions`}
+								cards={gameState.hands[opponentId].func}
 							/>
 						))}
 					</div>
@@ -798,25 +841,27 @@ export default function RoomPage() {
 						myId={user.id}
 						remainingTime={Math.ceil(remainingTime / 1000)}
 					/>
-					<GameBoard board={gameState.board} onCellClick={handleCellClick} />
+					<GameBoard
+						board={gameState.board} /* onCellClick={handleCellClick} */
+					/>
 				</div>
 				{/* Player's Info */}
 				<div className="flex flex-col items-center gap-4 mt-4">
-					{gameState.missions[user.id] && (
-						<Mission
-							title={"your mission"}
-							description={gameState?.missions[user.id]?.mission.description}
+					{gameState.hands[user.id].func && (
+						<Missions
+							title="your functions"
+							cards={gameState.hands[user.id].func}
 						/>
 					)}
 					<div className="flex flex-row items-end gap-4">
 						{gameState.hands[user.id] && (
 							<Hand
-								cards={gameState.hands[user.id]}
+								cards={gameState.hands[user.id].memory}
 								onCardClick={setSelectedNumIndex}
 								selectedNumIndex={selectedNumIndex}
 							/>
 						)}
-						<div className="flex flex-col items-center gap-2"></div>
+						{/* <div className="flex flex-col items-center gap-2"></div>
 						<Operations
 							onOperationClick={setSelectedOperation}
 							selectedOperation={selectedOperation}
@@ -830,7 +875,7 @@ export default function RoomPage() {
 							}}
 						>
 							PASS
-						</button>
+						</button> */}
 					</div>
 				</div>
 				{gameState.status === "paused" && (
@@ -853,7 +898,7 @@ export default function RoomPage() {
 				<p className="mt-4">
 					An error occurred in the game. Please try again later.
 				</p>
-				<a href="/magic-square" className="btn btn-primary mt-4">
+				<a href="/memory-optimization" className="btn btn-primary mt-4">
 					Go back
 				</a>
 			</div>

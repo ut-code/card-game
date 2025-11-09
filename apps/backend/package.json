@@ -21,6 +21,8 @@
 		"wrangler": "^4.4.0"
 	},
 	"exports": {
-		".": "./src/index.ts"
+		".": "./src/index.ts",
+		"./magic": "./src/magic.ts",
+		"./memory": "./src/memory.ts"
 	}
 }
