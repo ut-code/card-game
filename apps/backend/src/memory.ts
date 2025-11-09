@@ -27,7 +27,7 @@ type Rule =
 	| { rule: "boardSize"; state: number }
 	| { rule: "timeLimit"; state: number };
 
-type CellState =
+export type CellState =
 	| { status: "free" }
 	| { status: "reserved"; occupiedBy: string }
 	| { status: "used"; occupiedBy: string };

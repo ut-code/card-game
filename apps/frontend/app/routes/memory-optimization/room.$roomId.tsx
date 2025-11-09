@@ -7,7 +7,6 @@ import type {
 	GameState,
 	MemoryCard,
 	MessageType,
-	Rule,
 } from "@apps/backend/memory";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -160,14 +159,14 @@ function Hand({
 	onCardClick,
 	selectedNumIndex,
 }: {
-	cards: MemoryCard[];
+	cards: Record<string, MemoryCard>;
 	onCardClick: (i: number) => void;
 	selectedNumIndex: number | null;
 }) {
 	return (
 		<div>
 			<div className="flex gap-2 justify-center p-2 bg-base-200 rounded-lg">
-				{cards.map((card, i) => (
+				{Object.values(cards).map((card, i) => (
 					<div
 						key={i}
 						className={`card w-24 h-32 p-2 ${
@@ -212,20 +211,29 @@ function Hand({
 //   );
 // }
 
-function Missions({ title, cards }: { title: string; cards: FunctionCard[] }) {
+function Missions({
+	title,
+	cards,
+}: {
+	title: string;
+	cards: Record<string, FunctionCard>;
+}) {
 	return (
 		<div className="border-2 rounded-lg bg-base-200 p-2 border-secondary">
 			<div className="text-secondary">{title}</div>
 			<div className="flex gap-2 justify-center">
-				{cards.map((card, i) => (
-					<div
-						key={i}
-						className={`card w-24 h-24 p-2 bg-secondary text-primary-content shadow-lg flex flex-col items-center`}
-					>
-						<span className="font-bold mr-auto">{card.cost}</span>
-						<Shape card={card} cellSz={3} />
-					</div>
-				))}
+				{Object.keys(cards).map((key) => {
+					const card = cards[key];
+					return (
+						<div
+							key={key}
+							className={`card w-24 h-24 p-2 bg-secondary text-primary-content shadow-lg flex flex-col items-center`}
+						>
+							<span className="font-bold mr-auto">{card.cost}</span>
+							<Shape card={card} cellSz={3} />
+						</div>
+					);
+				})}
 			</div>
 		</div>
 	);
