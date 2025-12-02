@@ -637,7 +637,7 @@ export default function RoomPage() {
 						</select>
 					</label>
 				</div>
-				<div className="form-control">
+				{/* <div className="form-control">
 					<label className="label cursor-pointer">
 						<span className="label-text">Disable negative numbers</span>
 						<input
@@ -653,7 +653,7 @@ export default function RoomPage() {
 							// }
 						/>
 					</label>
-				</div>
+				</div> */}
 				<div className="form-control">
 					<label className="label cursor-pointer">
 						<span className="label-text">Time Limit</span>
