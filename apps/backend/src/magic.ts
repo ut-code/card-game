@@ -4,8 +4,6 @@ import { RoomMatch, type RoomState } from "./room";
 
 // --- Game-specific Types ---
 
-let timeout: ReturnType<typeof setTimeout>;
-
 export type Operation = "add" | "sub";
 
 export type MoveAction = {
@@ -48,6 +46,7 @@ export type GameState = RoomState & {
 	hands: { [playerId: string]: number[] };
 	missions: { [playerId: string]: { id: string; mission: Mission } };
 	timeLimitUnix: number;
+	timeoutId?: ReturnType<typeof setTimeout>;
 };
 
 // Combined message types for both room and game actions
@@ -259,8 +258,8 @@ export class Magic extends RoomMatch<GameState> {
 		this.state.currentPlayerIndex = firstPlayingIndex;
 		this.state.status = "playing";
 		this.state.timeLimitUnix = Date.now() + this.state.rules.timeLimit * 1000;
-		clearTimeout(timeout);
-		timeout = setTimeout(() => {
+		clearTimeout(this.state.timeoutId);
+		this.state.timeoutId = setTimeout(() => {
 			this.pass();
 		}, this.state.rules.timeLimit * 1000);
 
@@ -372,7 +371,7 @@ export class Magic extends RoomMatch<GameState> {
 
 		this.state.board[y][x] = this.computeCellResult(x, y, num, operation);
 
-		clearTimeout(timeout);
+		clearTimeout(this.state.timeoutId);
 
 		this.advanceTurnAndRound();
 
@@ -425,7 +424,7 @@ export class Magic extends RoomMatch<GameState> {
 
 		this.state.timeLimitUnix = Date.now() + this.state.rules.timeLimit * 1000;
 		if (!this.state.lastGameResult)
-			timeout = setTimeout(() => {
+			this.state.timeoutId = setTimeout(() => {
 				this.pass();
 			}, this.state.rules.timeLimit * 1000);
 		await this.ctx.storage.put("gameState", this.state);
@@ -441,8 +440,21 @@ export class Magic extends RoomMatch<GameState> {
 		const hand = this.state.hands[cpuId];
 		if (!hand || hand.length === 0) return;
 
-		this.pass();
-		return;
+		const randomChoice = this.cpuRandomChoice(this.state.board, hand);
+
+		if (!randomChoice) {
+			this.pass();
+			return;
+		}
+
+		await this.makeMove(
+			cpuId,
+			randomChoice.x,
+			randomChoice.y,
+			hand[randomChoice.handIndex],
+			randomChoice.operation,
+			randomChoice.handIndex,
+		);
 
 		// random
 		// const size = this.state.rules.boardSize;
@@ -472,12 +484,31 @@ export class Magic extends RoomMatch<GameState> {
 		// await this.makeMove(cpuId, targetX, targetY, num, operation, numIndex);
 	}
 
+	cpuRandomChoice(board: (number | null)[][], hand: number[]) {
+		if (Math.random() < 0.1) return null;
+
+		const size = board.length;
+		const [randomX, randomY] = [
+			Math.floor(Math.random() * size),
+			Math.floor(Math.random() * size),
+		];
+		const randomHandIndex = Math.floor(Math.random() * hand.length);
+		const randomOperation: Operation = Math.random() < 0.8 ? "add" : "sub";
+
+		return {
+			x: randomX,
+			y: randomY,
+			handIndex: randomHandIndex,
+			operation: randomOperation,
+		};
+	}
+
 	async pass() {
 		if (!this.state) return;
 		this.advanceTurnAndRound();
 		this.state.timeLimitUnix = Date.now() + this.state.rules.timeLimit * 1000;
-		clearTimeout(timeout);
-		timeout = setTimeout(() => {
+		clearTimeout(this.state.timeoutId);
+		this.state.timeoutId = setTimeout(() => {
 			this.pass();
 		}, this.state.rules.timeLimit * 1000);
 		await this.ctx.storage.put("gameState", this.state);

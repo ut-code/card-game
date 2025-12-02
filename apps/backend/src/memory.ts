@@ -5,8 +5,6 @@ import { RoomMatch, type RoomState } from "./room";
 
 // --- Game-specific Types ---
 
-let timeout: ReturnType<typeof setTimeout>;
-
 type ReserveMemoryAction = {
 	memoryCardId: string;
 	x: number;
@@ -78,6 +76,7 @@ export type GameState = RoomState & {
 	clocks: { [playerId: string]: number };
 	points: { [playerId: string]: number };
 	timeLimitUnix: number;
+	timeoutId?: ReturnType<typeof setTimeout>;
 };
 
 // Combined message types for both room and game actions
@@ -261,8 +260,8 @@ export class Memory extends RoomMatch<GameState> {
 		this.state.currentPlayerIndex = firstPlayingIndex;
 		this.state.status = "playing";
 		this.state.timeLimitUnix = Date.now() + this.state.rules.timeLimit * 1000;
-		clearTimeout(timeout);
-		timeout = setTimeout(() => {
+		clearTimeout(this.state.timeoutId);
+		this.state.timeoutId = setTimeout(() => {
 			this.pass();
 		}, this.state.rules.timeLimit * 1000);
 
@@ -419,9 +418,9 @@ export class Memory extends RoomMatch<GameState> {
 			});
 		}
 		this.state.timeLimitUnix = Date.now() + this.state.rules.timeLimit * 1000;
-		clearTimeout(timeout);
+		clearTimeout(this.state.timeoutId);
 		if (!this.state.winners)
-			timeout = setTimeout(() => {
+			this.state.timeoutId = setTimeout(() => {
 				this.pass();
 			}, this.state.rules.timeLimit * 1000);
 		await this.ctx.storage.put("gameState", this.state);
@@ -459,8 +458,8 @@ export class Memory extends RoomMatch<GameState> {
 		this.state.points[playerId] += card.cost;
 
 		this.state.timeLimitUnix = Date.now() + this.state.rules.timeLimit * 1000;
-		clearTimeout(timeout);
-		timeout = setTimeout(() => {
+		clearTimeout(this.state.timeoutId);
+		this.state.timeoutId = setTimeout(() => {
 			this.pass();
 		}, this.state.rules.timeLimit * 1000);
 
@@ -476,8 +475,8 @@ export class Memory extends RoomMatch<GameState> {
 		if (!this.state) return;
 		this.advanceTurnAndRound();
 		this.state.timeLimitUnix = Date.now() + this.state.rules.timeLimit * 1000;
-		clearTimeout(timeout);
-		timeout = setTimeout(() => {
+		clearTimeout(this.state.timeoutId);
+		this.state.timeoutId = setTimeout(() => {
 			this.pass();
 		}, this.state.rules.timeLimit * 1000);
 		await this.ctx.storage.put("gameState", this.state);
