@@ -17,10 +17,13 @@ import {
 	type Rule,
 } from "./magic";
 
+import { Matching } from "./matching";
+
 import { Memory } from "./memory";
 
 type Bindings = {
 	MAGIC: DurableObjectNamespace;
+	MATCHING: DurableObjectNamespace;
 	MEMORY: DurableObjectNamespace;
 	DATABASE_URL: string;
 	ENV: string;
@@ -335,10 +338,26 @@ const apiApp = new Hono<{
 			default:
 				throw new HTTPException(400, { message: "Invalid game title" });
 		}
+	})
+	.get("/matching/ws", authMiddleware, async (c) => {
+		const user = c.get("user");
+
+		const id = c.env.MATCHING.idFromName("matching");
+		const stub = c.env.MATCHING.get(id);
+
+		const url = new URL(c.req.url);
+		url.searchParams.set("playerId", user.id);
+		const playerName = new URL(c.req.url).searchParams.get("playerName");
+		if (playerName) {
+			url.searchParams.set("playerName", playerName);
+		}
+
+		const request = new Request(url.toString(), c.req.raw);
+		return stub.fetch(request);
 	});
 
 export type AppType = typeof apiApp;
 export default apiApp;
 
 export type { GameState, MoveAction, MessageType, Rule, Operation };
-export { Magic, Memory };
+export { Magic, Memory, Matching };

@@ -13,6 +13,10 @@
 			{
 				"name": "MEMORY",
 				"class_name": "Memory"
+			},
+			{
+				"name": "MATCHING",
+				"class_name": "Matching"
 			}
 		]
 	},
@@ -24,6 +28,10 @@
 		{
 			"tag": "v2",
 			"new_sqlite_classes": ["Memory"]
+		},
+		{
+			"tag": "v3",
+			"new_sqlite_classes": ["Matching"]
 		}
 	]
 }
