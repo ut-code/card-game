@@ -15,6 +15,7 @@ import {
 	useNavigate,
 	useParams,
 } from "react-router";
+import ReconnectingWebSocket from "reconnecting-websocket";
 import { client } from "~/lib/client";
 
 export async function clientLoader({ params }: ClientLoaderFunctionArgs) {
@@ -236,7 +237,7 @@ export default function RoomPage() {
 	const myStatus = user?.id
 		? (gameState?.playerStatus[user?.id] ?? null)
 		: null;
-	const ws = useRef<WebSocket | null>(null);
+	const ws = useRef<ReconnectingWebSocket | null>(null);
 
 	const activePlayerIds = user
 		? (gameState?.players.filter(
@@ -275,7 +276,7 @@ export default function RoomPage() {
 
 		const wsUrl = `${proto}//${fullHost}${prefix}/games/${roomId}/ws?playerId=${user.id}&playerName=${user.name}`;
 
-		const socket = new WebSocket(wsUrl);
+		const socket = new ReconnectingWebSocket(wsUrl);
 		ws.current = socket;
 
 		socket.onopen = () => {
