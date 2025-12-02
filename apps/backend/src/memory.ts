@@ -68,7 +68,7 @@ export type GameState = RoomState & {
 		timeLimit: number;
 	};
 	round: number;
-	turn: number;
+	currentPlayerIndex: number; // index in players, including spectators
 	board: CellState[][];
 	winners: string[] | null;
 	gameId: string;
@@ -172,7 +172,7 @@ export class Memory extends RoomMatch<GameState> {
 			},
 			// GameState specific properties
 			round: 0,
-			turn: 0,
+			currentPlayerIndex: 0,
 			board: [],
 			winners: null,
 			gameId: this.ctx.id.toString(),
@@ -204,32 +204,61 @@ export class Memory extends RoomMatch<GameState> {
 
 	override async startGame(): Promise<void> {
 		if (!this.state || this.state.status !== "preparing") return;
-		// The original implementation called a method to clear parts of the state.
-		// We will replicate that behavior by resetting the game-specific state here.
 		const size = this.state.rules.boardSize;
 		this.state.board = Array(size)
 			.fill(null)
 			.map(() => Array(size).fill(null));
 		this.state.round = 0;
-		this.state.turn = 0;
 		this.state.winners = null;
 		this.state.hands = {};
 		this.state.clocks = {};
 		this.state.points = {};
 
-		for (const playerId of this.state.players) {
-			if (this.state.playerStatus[playerId] !== "ready") {
-				console.error("one of the players not ready:", playerId);
-				return;
-			}
-			this.state.playerStatus[playerId] = "playing";
+		// for (let i = 0; i < this.state.rules.cpu; i++) {
+		// 	const cpuId = `cpu-${i + 1}-${crypto.randomUUID()}`;
+		// 	this.state.players.push({
+		// 		id: cpuId,
+		// 		type: "cpu",
+		// 	});
+		// 	this.state.names[cpuId] = `CPU ${i + 1}`;
+		// 	this.state.playerStatus[cpuId] = "ready";
+		// }
 
-			if (this.state.hands[playerId]) {
-				console.error("player already has a hand:", playerId);
+		for (const id of this.state.players.map((p) => p.id)) {
+			const player = this.state.players.find((p) => p.id === id);
+			if (!player) throw new Error(`Player not found: ${id}`);
+
+			if (
+				this.state.playerStatus[id] !== "ready" &&
+				this.state.playerStatus[id] !== "spectatingReady"
+			) {
+				console.error("one of the players not ready:", id);
 				return;
 			}
-			this.state.hands[playerId] = this.drawInitialHand();
+
+			switch (this.state.playerStatus[id]) {
+				case "ready":
+					this.state.playerStatus[id] = "playing";
+					if (player.type !== "cpu") player.type = "player";
+					if (this.state.hands[id]) {
+						console.error("player already has a hand:", id);
+						return;
+					}
+					this.state.hands[id] = this.drawInitialHand();
+					break;
+				case "spectatingReady":
+					this.state.playerStatus[id] = "spectating";
+					player.type = "spectator";
+					break;
+				default:
+					this.state.playerStatus[id] satisfies never;
+			}
 		}
+
+		const firstPlayingIndex = this.state.players.findIndex(
+			(p) => this.state?.playerStatus[p.id] === "playing",
+		);
+		this.state.currentPlayerIndex = firstPlayingIndex;
 		this.state.status = "playing";
 		this.state.timeLimitUnix = Date.now() + this.state.rules.timeLimit * 1000;
 		clearTimeout(timeout);
@@ -281,59 +310,56 @@ export class Memory extends RoomMatch<GameState> {
 		};
 	}
 
-	advanceTurnAndRound() {
+	async advanceTurnAndRound() {
 		if (!this.state) return;
 
 		const players = this.state.players;
-		const playerStatuses = this.state.playerStatus;
-		const currentTurn = this.state.turn;
+		const currentPlayerIndex = this.state.currentPlayerIndex;
 
-		const activePlayerIds = players.filter(
-			(p) => playerStatuses[p] === "playing",
+		const activePlayers = players.filter(
+			(p) => p.type === "player" || p.type === "cpu",
 		);
-		if (activePlayerIds.length === 0) {
-			this.state.status = "paused";
-			return; // No one to advance turn to.
-		}
 
-		const currentPlayerId = players[currentTurn];
+		if (activePlayers.length === 0)
+			throw new Error("No active players to advance turn to");
 
-		// Find the index of the current player in the list of *active* players.
-		// If the current player is not active (e.g., a watcher), this will be -1.
-		const currentPlayerActiveIndex = activePlayerIds.indexOf(currentPlayerId);
+		const currentActivePlayerIndex = activePlayers.findIndex(
+			(p) => p.id === players[currentPlayerIndex].id,
+		);
 
-		let nextPlayerId: string | null = null;
+		if (currentActivePlayerIndex === -1)
+			throw new Error("Current active player not found");
 
-		if (currentPlayerActiveIndex === -1) {
-			// The turn was on an inactive player. Find the first active player after the current one.
-			let nextTurn = currentTurn;
-			for (let i = 0; i < players.length; i++) {
-				nextTurn = (nextTurn + 1) % players.length;
-				if (playerStatuses[players[nextTurn]] === "playing") {
-					nextPlayerId = players[nextTurn];
-					break;
-				}
-			}
-			if (!nextPlayerId) {
-				// Should be unreachable due to activePlayerIds.length check
-				this.state.status = "paused";
-				return;
-			}
-		} else {
-			// The current player is active. Find the next one in the active list.
-			const nextPlayerActiveIndex =
-				(currentPlayerActiveIndex + 1) % activePlayerIds.length;
-			nextPlayerId = activePlayerIds[nextPlayerActiveIndex];
+		const nextActivePlayerIndex =
+			(currentActivePlayerIndex + 1) % activePlayers.length;
 
+		const nextActivePlayer = activePlayers[nextActivePlayerIndex];
+
+		if (nextActivePlayer.type === "spectator")
+			throw new Error("Next active player cannot be a spectator");
+
+		const nextPlayerIndex = players.findIndex(
+			(p) => p.id === nextActivePlayer.id,
+		);
+
+		if (nextActivePlayer.id !== players[nextPlayerIndex].id)
+			throw new Error("Turn did not advance correctly");
+
+		this.state.currentPlayerIndex = nextPlayerIndex;
+
+		if (nextActivePlayerIndex === 0) {
 			// If we wrapped around the active players list, increment the round.
-			if (nextPlayerActiveIndex === 0) {
-				this.state.round += 1;
-			}
+			this.state.round += 1;
 		}
 
-		if (nextPlayerId) {
-			this.state.turn = players.indexOf(nextPlayerId);
-		}
+		await this.ctx.storage.put("gameState", this.state);
+		this.broadcast({ type: "state", payload: this.state });
+
+		// if (nextActivePlayer.type === "cpu") {
+		// 	this.cpuMakeMove(nextActivePlayer.id).catch((err) => {
+		// 		console.error("CPU Error:", err);
+		// 	});
+		// }
 	}
 
 	async reserveMemory(
@@ -467,7 +493,7 @@ export class Memory extends RoomMatch<GameState> {
 	): boolean {
 		if (!this.state) throw new Error("Game state is not initialized");
 
-		const currentPlayer = this.state.players[this.state.turn];
+		const currentPlayer = this.state.players[this.state.currentPlayerIndex].id;
 		if (currentPlayer !== player) {
 			console.error("Not your turn:", player);
 			return false;

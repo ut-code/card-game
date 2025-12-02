@@ -235,13 +235,14 @@ export default function RoomPage() {
 
 	const activePlayerIds = user
 		? (gameState?.players.filter(
-				(p) => gameState?.playerStatus[p] === "playing",
+				(p) => gameState?.playerStatus[p.id] === "playing",
 			) ?? null)
 		: null;
 	const opponentIds = user
-		? (activePlayerIds?.filter((p) => p !== user.id) ?? null)
+		? (activePlayerIds?.filter((p) => p.id !== user.id) ?? null)
 		: null;
-	const currentPlayerId = gameState?.players[gameState.turn] ?? null;
+	const currentPlayer =
+		gameState?.players[gameState.currentPlayerIndex] ?? null;
 
 	const [selectedNumIndex, setSelectedNumIndex] = useState<number | null>(null);
 	const [selectedOperation, setSelectedOperation] = useState<Operation>("add");
@@ -382,7 +383,7 @@ export default function RoomPage() {
 		console.log(
 			"Loading or waiting for game state...",
 			gameState,
-			currentPlayerId,
+			currentPlayer,
 		);
 		return (
 			<div className="flex items-center justify-center min-h-screen">
@@ -392,12 +393,12 @@ export default function RoomPage() {
 	}
 
 	if (myStatus === "spectating") {
-		if (!currentPlayerId) {
-			throw new Error("Current player ID is missing");
+		if (!currentPlayer) {
+			throw new Error("Current player is missing");
 		}
 
 		const playingPlayers = gameState.players.filter(
-			(p) => gameState.playerStatus[p] === "playing",
+			(p) => gameState.playerStatus[p.id] === "playing",
 		);
 
 		const spectatedPlayer = spectatedPlayerId
@@ -422,14 +423,14 @@ export default function RoomPage() {
 					>
 						Overview
 					</button>
-					{playingPlayers.map((pId) => (
+					{playingPlayers.map((p) => (
 						<button
-							key={pId}
+							key={p.id}
 							type="button"
-							className={`btn ${spectatedPlayerId === pId ? "btn-primary" : ""}`}
-							onClick={() => setSpectatedPlayerId(pId)}
+							className={`btn ${spectatedPlayerId === p.id ? "btn-primary" : ""}`}
+							onClick={() => setSpectatedPlayerId(p.id)}
 						>
-							{gameState.names[pId]}
+							{gameState.names[p.id]}
 						</button>
 					))}
 				</div>
@@ -439,14 +440,14 @@ export default function RoomPage() {
 					{spectatedPlayer
 						? // Single player perspective
 							playingPlayers
-								.filter((pId) => pId !== spectatedPlayer.id)
-								.map((opponentId) =>
-									gameState.missions[opponentId] ? (
+								.filter((p) => p.id !== spectatedPlayer.id)
+								.map((opponent) =>
+									gameState.missions[opponent.id] ? (
 										<Mission
-											key={opponentId}
-											title={`${gameState.names[opponentId]}'s mission`}
+											key={opponent.id}
+											title={`${gameState.names[opponent.id]}'s mission`}
 											description={
-												gameState.missions[opponentId]?.mission.description
+												gameState.missions[opponent.id]?.mission.description
 											}
 										/>
 									) : null,
@@ -458,8 +459,8 @@ export default function RoomPage() {
 				<div className="w-full max-w-md mx-auto">
 					<TurnDisplay
 						round={gameState.round}
-						currentPlayerId={currentPlayerId}
-						currentPlayerName={gameState.names[currentPlayerId]}
+						currentPlayerId={currentPlayer.id}
+						currentPlayerName={gameState.names[currentPlayer.id]}
 						myId={user.id} // Will never be "Your Turn"
 						remainingTime={Math.ceil(remainingTime / 1000)}
 					/>
@@ -484,21 +485,21 @@ export default function RoomPage() {
 						<div>
 							{
 								// Overview perspective
-								playingPlayers.map((playerId) =>
-									gameState.missions[playerId] ? (
-										<div className="flex" key={playerId}>
+								playingPlayers.map((player) =>
+									gameState.missions[player.id] ? (
+										<div className="flex" key={player.id}>
 											<div className="ml-0">
 												<Mission
-													key={playerId}
-													title={`${gameState.names[playerId]}'s mission`}
+													key={player.id}
+													title={`${gameState.names[player.id]}'s mission`}
 													description={
-														gameState.missions[playerId]?.mission.description
+														gameState.missions[player.id]?.mission.description
 													}
 												/>
 											</div>
 											<div className="ml-auto">
 												<Hand
-													cards={gameState.hands[playerId]}
+													cards={gameState.hands[player.id]}
 													onCardClick={() => {}}
 													selectedNumIndex={null}
 												/>
@@ -530,14 +531,14 @@ export default function RoomPage() {
 					</div>
 				</div>
 				<ul className="rounded-lg bg-base-200 p-4 shadow-inner">
-					{gameState.players.map((playerId) => (
+					{gameState.players.map((player) => (
 						<li
-							key={playerId}
+							key={player.id}
 							className="flex items-center justify-between gap-4 p-2"
 						>
 							<span className="font-medium">
-								{gameState.names[playerId]}
-								{playerId === roomHost && (
+								{gameState.names[player.id]}
+								{player.id === roomHost && (
 									<span className="badge badge-primary badge-sm ml-2">
 										Host
 									</span>
@@ -545,16 +546,16 @@ export default function RoomPage() {
 							</span>
 							<span
 								className={`rounded-full px-3 py-1 text-sm font-semibold ${
-									gameState.playerStatus[playerId] === "ready"
+									gameState.playerStatus[player.id] === "ready"
 										? "bg-green-500 text-white"
-										: gameState.playerStatus[playerId] === "error"
+										: gameState.playerStatus[player.id] === "error"
 											? "bg-red-500 text-white"
 											: "bg-gray-300 text-gray-700"
 								}`}
 							>
-								{gameState.playerStatus[playerId] === "ready"
+								{gameState.playerStatus[player.id] === "ready"
 									? "Ready!"
-									: gameState.playerStatus[playerId] === "error"
+									: gameState.playerStatus[player.id] === "error"
 										? "Error"
 										: "Preparing..."}
 							</span>
@@ -639,7 +640,11 @@ export default function RoomPage() {
 	}
 
 	if (myStatus === "finished") {
-		if (!gameState.winners || gameState.winners.length === 0) {
+		if (
+			!gameState.lastGameResult ||
+			!gameState.lastGameResult.winners ||
+			gameState.lastGameResult.winners.length === 0
+		) {
 			throw new Error("Winners data is missing");
 		}
 		if (winnerDisplay === 0) {
@@ -648,9 +653,9 @@ export default function RoomPage() {
 					<div className="flex justify-center gap-4 mb-12 text-red-500">
 						<h1 className="text-3xl font-bold">GAME SET</h1>
 					</div>
-					{gameState.winners && (
+					{gameState.lastGameResult.winners && (
 						<div className="flex justify-center gap-4 mb-12">
-							{gameState.winners.map((winnersId) => (
+							{gameState.lastGameResult.winners.map((winnersId) => (
 								<h1 key={winnersId} className="text-3xl font-bold">
 									{gameState.names[winnersId]}
 								</h1>
@@ -678,21 +683,22 @@ export default function RoomPage() {
 				</div>
 			);
 		}
-		if (winnerDisplay === gameState.winners.length) {
+		if (winnerDisplay === gameState.lastGameResult.winners.length) {
 			return (
 				<div>
 					<div className="flex justify-center gap-4 mb-4">
 						<h1 className="text-3xl font-bold">
-							Result {winnerDisplay}/{gameState.winners.length}
+							Result {winnerDisplay}/{gameState.lastGameResult.winners.length}
 						</h1>
 					</div>
 					<div className="flex justify-center gap-4 mb-4">
 						<Mission
-							key={gameState.winners[winnerDisplay - 1]}
-							title={`${gameState?.names[gameState.winners[winnerDisplay - 1]]}'s mission`}
+							key={gameState.lastGameResult.winners[winnerDisplay - 1]}
+							title={`${gameState?.names[gameState.lastGameResult.winners[winnerDisplay - 1]]}'s mission`}
 							description={
-								gameState.missions[gameState.winners[winnerDisplay - 1]].mission
-									.description
+								gameState.missions[
+									gameState.lastGameResult.winners[winnerDisplay - 1]
+								].mission.description
 							}
 						/>
 					</div>
@@ -700,7 +706,9 @@ export default function RoomPage() {
 						<FinalGameBoard
 							board={gameState.board}
 							winnerary={
-								gameState.winnersAry[gameState.winners[winnerDisplay - 1]]
+								gameState.lastGameResult.winnersAry[
+									gameState.lastGameResult.winners[winnerDisplay - 1]
+								]
 							}
 						/>
 					</div>
@@ -727,16 +735,17 @@ export default function RoomPage() {
 			<div>
 				<div className="flex justify-center gap-4 mb-4">
 					<h1 className="text-3xl font-bold">
-						Result {winnerDisplay}/{gameState.winners.length}
+						Result {winnerDisplay}/{gameState.lastGameResult.winners.length}
 					</h1>
 				</div>
 				<div className="flex justify-center gap-4 mb-4">
 					<Mission
-						key={gameState.winners[winnerDisplay - 1]}
-						title={`${gameState.names[gameState.winners[winnerDisplay - 1]]}'s mission`}
+						key={gameState.lastGameResult.winners[winnerDisplay - 1]}
+						title={`${gameState.names[gameState.lastGameResult.winners[winnerDisplay - 1]]}'s mission`}
 						description={
-							gameState.missions[gameState.winners[winnerDisplay - 1]].mission
-								.description
+							gameState.missions[
+								gameState.lastGameResult.winners[winnerDisplay - 1]
+							].mission.description
 						}
 					/>
 				</div>
@@ -744,7 +753,9 @@ export default function RoomPage() {
 					<FinalGameBoard
 						board={gameState.board}
 						winnerary={
-							gameState.winnersAry[gameState.winners[winnerDisplay - 1]]
+							gameState.lastGameResult.winnersAry[
+								gameState.lastGameResult.winners[winnerDisplay - 1]
+							]
 						}
 					/>
 				</div>
@@ -769,8 +780,8 @@ export default function RoomPage() {
 	}
 
 	if (myStatus === "playing") {
-		if (!currentPlayerId) {
-			throw new Error("Current player ID is missing");
+		if (!currentPlayer) {
+			throw new Error("Current player is missing");
 		}
 		return (
 			<div className="p-4 md:p-8 flex flex-col gap-4">
@@ -778,12 +789,12 @@ export default function RoomPage() {
 				{/* Opponent's Info */}
 				{opponentIds && (
 					<div className="flex justify-center gap-4 mb-4">
-						{opponentIds.map((opponentId) => (
+						{opponentIds.map((opponent) => (
 							<Mission
-								key={opponentId}
-								title={`${gameState?.names[opponentId]}'s mission`}
+								key={opponent.id}
+								title={`${gameState?.names[opponent.id]}'s mission`}
 								description={
-									gameState?.missions[opponentId]?.mission.description
+									gameState?.missions[opponent.id]?.mission.description
 								}
 							/>
 						))}
@@ -793,8 +804,8 @@ export default function RoomPage() {
 				<div className="w-full max-w-md mx-auto">
 					<TurnDisplay
 						round={gameState.round}
-						currentPlayerId={currentPlayerId}
-						currentPlayerName={gameState.names[currentPlayerId]}
+						currentPlayerId={currentPlayer.id}
+						currentPlayerName={gameState.names[currentPlayer.id]}
 						myId={user.id}
 						remainingTime={Math.ceil(remainingTime / 1000)}
 					/>
@@ -823,7 +834,7 @@ export default function RoomPage() {
 						/>
 						<button
 							type="button"
-							disabled={currentPlayerId !== user.id}
+							disabled={currentPlayer.id !== user.id}
 							className="btn btn-primary hover:btn-accent"
 							onClick={() => {
 								sendWsMessage({ type: "pass" });
