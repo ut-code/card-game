@@ -27,7 +27,7 @@ type Rule =
 	| { rule: "boardSize"; state: number }
 	| { rule: "timeLimit"; state: number };
 
-type CellState =
+export type CellState =
 	| { status: "free" }
 	| { status: "reserved"; occupiedBy: string }
 	| { status: "used"; occupiedBy: string };
@@ -207,7 +207,7 @@ export class Memory extends RoomMatch<GameState> {
 		const size = this.state.rules.boardSize;
 		this.state.board = Array(size)
 			.fill(null)
-			.map(() => Array(size).fill(null));
+			.map(() => Array(size).fill({ status: "free" }));
 		this.state.round = 0;
 		this.state.winners = null;
 		this.state.hands = {};

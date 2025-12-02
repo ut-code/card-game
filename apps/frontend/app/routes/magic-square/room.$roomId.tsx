@@ -1,7 +1,12 @@
 /** biome-ignore-all lint/a11y/noStaticElementInteractions: TODO */
 /** biome-ignore-all lint/suspicious/noArrayIndexKey: TODO */
 /** biome-ignore-all lint/a11y/useKeyWithClickEvents: TODO */
-import type { GameState, MessageType, Operation, Rule } from "@apps/backend";
+import type {
+	GameState,
+	MessageType,
+	Operation,
+	Rule,
+} from "@apps/backend/magic";
 import { useEffect, useRef, useState } from "react";
 import {
 	type ClientLoaderFunctionArgs,

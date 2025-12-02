@@ -78,11 +78,11 @@ export default function Lobby() {
 		const roomName =
 			newRoomName || `room-${Math.floor(Math.random() * 100000)}`;
 		const res = await client.rooms.create.$post({
-			json: { name: roomName, gameTitle: "magic-square" },
+			json: { name: roomName, gameTitle: "memory-optimization" },
 		});
 		if (res.ok) {
 			const newRoom = await res.json();
-			navigate(`/magic-square/room/${newRoom.id}`);
+			navigate(`/memory-optimization/room/${newRoom.id}`);
 		}
 	};
 
@@ -109,7 +109,7 @@ export default function Lobby() {
 				param: { roomId },
 			});
 			if (res.ok) {
-				navigate(`/magic-square/room/${roomId}`);
+				navigate(`/memory-optimization/room/${roomId}`);
 			}
 		} catch (e) {
 			console.error(e);
@@ -125,7 +125,7 @@ export default function Lobby() {
 			});
 			if (res.ok) {
 				const data = await res.json();
-				navigate(`/magic-square/room/${data.id}`);
+				navigate(`/memory-optimization/room/${data.id}`);
 			} else {
 				setJoinError("Failed to join room");
 			}
