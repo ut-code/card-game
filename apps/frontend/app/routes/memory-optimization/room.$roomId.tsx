@@ -75,12 +75,17 @@ function GameBoard({
 						className={`aspect-square bg-base-100 rounded flex items-center justify-center text-6xl font-bold cursor-pointer hover:bg-primary hover:text-primary-content transition-colors duration-150`}
 						style={{
 							backgroundColor:
-								cell.status === "reserved" || cell.status === "used"
-									? colors[cell.occupiedBy]
-									: undefined,
+								cell.status === "used" ? colors[cell.occupiedBy] : undefined,
 						}}
 						onClick={() => onCellClick(x, y)}
-					></div>
+					>
+						{cell.status === "reserved" && (
+							<div
+								className="w-6 h-6 rounded-3xl"
+								style={{ backgroundColor: colors[cell.occupiedBy] }}
+							></div>
+						)}
+					</div>
 				)),
 			)}
 		</div>
@@ -189,51 +194,30 @@ function Hand({
 	);
 }
 
-// function Operations({
-//   onOperationClick,
-//   selectedOperation,
-// }: {
-//   onOperationClick: (name: Operation) => void;
-//   selectedOperation: Operation;
-// }) {
-//   return (
-//     <div>
-//       Operation
-//       {/* <div className="flex gap-2 justify-center p-2 bg-base-200 rounded-lg">
-// 				<div
-// 					className={`card w-12 h-12 ${selectedOperation === "add" ? "bg-accent" : "bg-primary"} text-primary-content shadow-lg flex items-center justify-center cursor-pointer hover:bg-accent transition-colors duration-150`}
-// 					onClick={() => onOperationClick("add")}
-// 				>
-// 					<span className="text-4xl font-bold">+</span>
-// 				</div>
-// 				<div
-// 					className={`card w-12 h-12 ${selectedOperation === "sub" ? "bg-accent" : "bg-primary"} text-primary-content shadow-lg flex items-center justify-center cursor-pointer hover:bg-accent transition-colors duration-150`}
-// 					onClick={() => onOperationClick("sub")}
-// 				>
-// 					<span className="text-4xl font-bold">-</span>
-// 				</div>
-// 			</div> */}
-//     </div>
-//   );
-// }
-
 function Missions({
 	title,
 	cards,
+	onFuncClick,
+	selectedFuncId,
 }: {
 	title: string;
 	cards: Record<string, FunctionCard>;
+	onFuncClick: ((i: string) => void) | null;
+	selectedFuncId: string | null;
 }) {
 	return (
 		<div className="border-2 rounded-lg bg-base-200 p-2 border-secondary">
 			<div className="text-secondary">{title}</div>
 			<div className="flex gap-2 justify-center">
-				{Object.keys(cards).map((key) => {
-					const card = cards[key];
+				{Object.keys(cards).map((id) => {
+					const card = cards[id];
 					return (
 						<div
-							key={key}
-							className={`card w-24 h-24 p-2 bg-secondary text-primary-content shadow-lg flex flex-col items-center`}
+							key={id}
+							className={`card w-24 h-24 p-2 ${selectedFuncId === id ? "bg-accent" : "bg-secondary"} text-primary-content shadow-lg flex flex-col items-center`}
+							onClick={() => {
+								if (onFuncClick) onFuncClick(id);
+							}}
 						>
 							<span className="font-bold mr-auto">{card.cost}</span>
 							<Shape card={card} cellSz={12} />
@@ -310,7 +294,7 @@ export default function RoomPage() {
 	const currentPlayerId = gameState?.players[gameState.turn] ?? null;
 
 	const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
-	//   const [selectedOperation, setSelectedOperation] = useState<Operation>("add");
+	const [selectedFuncId, setSelectedFuncId] = useState<string | null>(null);
 
 	// const [winnerDisplay, setWinnerDisplay] = useState(0);
 	const [remainingTime, setRemainingTime] = useState(0);
@@ -383,16 +367,28 @@ export default function RoomPage() {
 		}
 	}
 	const handleCellClick = (x: number, y: number) => {
-		if (!gameState || !user || !user.id || selectedCardId === null) return;
-		sendWsMessage({
-			type: "reserveMemory",
-			payload: {
-				memoryCardId: selectedCardId,
-				x,
-				y,
-			},
-		});
-		setSelectedCardId(null);
+		if (!gameState || !user || !user.id) return;
+		if (selectedCardId) {
+			sendWsMessage({
+				type: "reserveMemory",
+				payload: {
+					memoryCardId: selectedCardId,
+					x,
+					y,
+				},
+			});
+			setSelectedCardId(null);
+		} else if (selectedFuncId) {
+			sendWsMessage({
+				type: "execFunction",
+				payload: {
+					functionCardId: selectedFuncId,
+					x,
+					y,
+				},
+			});
+			setSelectedFuncId(null);
+		} else return;
 	};
 
 	// const handleWinnersPlusClick = () => {
@@ -839,6 +835,8 @@ export default function RoomPage() {
 								key={opponentId}
 								title={`${gameState?.names[opponentId]}'s functions`}
 								cards={gameState.hands[opponentId].func}
+								onFuncClick={null}
+								selectedFuncId={null}
 							/>
 						))}
 					</div>
@@ -864,13 +862,21 @@ export default function RoomPage() {
 						<Missions
 							title="your functions"
 							cards={gameState.hands[user.id].func}
+							onFuncClick={(i: string) => {
+								setSelectedFuncId(i);
+								setSelectedCardId(null);
+							}}
+							selectedFuncId={selectedFuncId}
 						/>
 					)}
 					<div className="flex flex-row items-end gap-4">
 						{gameState.hands[user.id] && (
 							<Hand
 								cards={gameState.hands[user.id].memory}
-								onCardClick={setSelectedCardId}
+								onCardClick={(i: string) => {
+									setSelectedCardId(i);
+									setSelectedFuncId(null);
+								}}
 								selectedCardId={selectedCardId}
 							/>
 						)}

@@ -92,16 +92,16 @@ export type MessageType =
 const DEFAULT_BOARD_SIZE = 6;
 const DEFAULT_TIME_LIMIT_MS = 10000;
 const COLOR_PALETTE = [
-	"lime",
-	"yellow",
-	"cyan",
-	"red",
-	"blue",
-	"magenta",
-	"orange",
-	"purple",
-	"brown",
-	"black",
+	"#00cc00",
+	"#cccc00",
+	"#00cccc",
+	"#cc0000",
+	"#0000cc",
+	"#cc00cc",
+	"#cc5600",
+	"#80409c",
+	"#512d10",
+	"#333333",
 ];
 
 export class Memory extends RoomMatch<GameState> {
@@ -445,7 +445,19 @@ export class Memory extends RoomMatch<GameState> {
 			return;
 		}
 
-		const card = functionCards[functionCardId];
+		const cardInstance = this.state.hands[playerId]?.func[functionCardId];
+		if (!cardInstance) {
+			console.error("Card instance not found in hand:", functionCardId);
+			return;
+		}
+		const card = functionCards[cardInstance.definitionId];
+		if (!card) {
+			console.error(
+				"Function card definition not found during occupy:",
+				cardInstance.definitionId,
+			);
+			return;
+		}
 
 		this.mutateBoard(playerId, x, y, "function", card.shape);
 		this.advanceTurnAndRound();
@@ -569,14 +581,18 @@ export class Memory extends RoomMatch<GameState> {
 				break;
 			}
 			case "function": {
-				const card = functionCards[CardId];
-				if (!card) {
-					console.error("Function card not found:", CardId);
+				const cardInstance = currentHand.func[CardId];
+				if (!cardInstance) {
+					console.error("Card not in hand:", CardId);
 					return false;
 				}
 
-				if (!currentHand.func[CardId]) {
-					console.error("Card not in hand:", CardId);
+				const card = functionCards[cardInstance.definitionId];
+				if (!card) {
+					console.error(
+						"Function card definition not found:",
+						cardInstance.definitionId,
+					);
 					return false;
 				}
 
