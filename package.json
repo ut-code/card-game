@@ -32,6 +32,7 @@
 	],
 	"dependencies": {
 		"@types/node": "^24.5.1",
-		"drizzle-orm": "^0.44.6"
+		"drizzle-orm": "^0.44.6",
+		"reconnecting-websocket": "^4.4.0"
 	}
 }

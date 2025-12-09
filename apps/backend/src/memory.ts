@@ -75,6 +75,7 @@ export type GameState = RoomState & {
 	};
 	clocks: { [playerId: string]: number };
 	points: { [playerId: string]: number };
+	colors: { [playerId: string]: string };
 	timeLimitUnix: number;
 	timeoutId?: ReturnType<typeof setTimeout>;
 };
@@ -93,6 +94,18 @@ export type MessageType =
 
 const DEFAULT_BOARD_SIZE = 6;
 const DEFAULT_TIME_LIMIT_MS = 10000;
+const COLOR_PALETTE = [
+	"lime",
+	"yellow",
+	"cyan",
+	"red",
+	"blue",
+	"magenta",
+	"orange",
+	"purple",
+	"brown",
+	"black",
+];
 
 export class Memory extends RoomMatch<GameState> {
 	constructor(ctx: DurableObjectState, env: Env) {
@@ -178,6 +191,7 @@ export class Memory extends RoomMatch<GameState> {
 			hands: {},
 			clocks: {},
 			points: {},
+			colors: {},
 			timeLimitUnix: Date.now() + DEFAULT_TIME_LIMIT_MS,
 		};
 		await this.ctx.storage.put("gameState", this.state);
@@ -244,6 +258,11 @@ export class Memory extends RoomMatch<GameState> {
 						return;
 					}
 					this.state.hands[id] = this.drawInitialHand();
+					if (this.state.colors[id]) {
+						console.error("player already has a color:", id);
+						return;
+					}
+					this.state.colors[id] = COLOR_PALETTE[this.state.players.indexOf(id)];
 					break;
 				case "spectatingReady":
 					this.state.playerStatus[id] = "spectating";
@@ -377,9 +396,18 @@ export class Memory extends RoomMatch<GameState> {
 
 		console.log("Making move:", playerId, x, y, memoryCardId);
 
-		const card = memoryCards[memoryCardId];
+		const cardInstance = this.state.hands[playerId]?.memory[memoryCardId];
+		if (!cardInstance) {
+			console.error("Card instance not found in hand:", memoryCardId);
+			return;
+		}
+
+		const card = memoryCards[cardInstance.definitionId];
 		if (!card) {
-			console.error("Memory card not found during occupy:", memoryCardId);
+			console.error(
+				"Memory card definition not found during occupy:",
+				cardInstance.definitionId,
+			);
 			return;
 		}
 
@@ -507,14 +535,18 @@ export class Memory extends RoomMatch<GameState> {
 		// TODO: もっと詳しくバリデーションを書く
 		switch (type) {
 			case "memory": {
-				const card = memoryCards[CardId];
-				if (!card) {
-					console.error("Memory card not found:", CardId);
+				const cardInstance = currentHand.memory[CardId];
+				if (!cardInstance) {
+					console.error("Card not in hand:", CardId);
 					return false;
 				}
 
-				if (!currentHand.memory[CardId]) {
-					console.error("Card not in hand:", CardId);
+				const card = memoryCards[cardInstance.definitionId];
+				if (!card) {
+					console.error(
+						"Memory card definition not found:",
+						cardInstance.definitionId,
+					);
 					return false;
 				}
 
@@ -535,7 +567,17 @@ export class Memory extends RoomMatch<GameState> {
 					x + cardWidth > boardWidth ||
 					y + cardHeight > boardHeight
 				) {
-					console.error("Out of bounds:", x, y);
+					console.error(
+						"Out of bounds:",
+						"x:",
+						x,
+						"y",
+						y,
+						"cardWidth:",
+						cardWidth,
+						"boardWidth:",
+						boardWidth,
+					);
 					return false;
 				}
 

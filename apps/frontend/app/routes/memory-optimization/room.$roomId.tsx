@@ -16,6 +16,7 @@ import {
 	useNavigate,
 	useParams,
 } from "react-router";
+import ReconnectingWebSocket from "reconnecting-websocket";
 import { client } from "~/lib/client";
 
 export async function clientLoader({ params }: ClientLoaderFunctionArgs) {
@@ -55,10 +56,12 @@ export async function clientLoader({ params }: ClientLoaderFunctionArgs) {
 
 function GameBoard({
 	board,
-	// onCellClick,
+	onCellClick,
+	colors,
 }: {
 	board: CellState[][];
-	// onCellClick: (x: number, y: number) => void;
+	onCellClick: (x: number, y: number) => void;
+	colors: { [playerId: string]: string };
 }) {
 	return (
 		<div
@@ -69,15 +72,15 @@ function GameBoard({
 				row.map((cell, x) => (
 					<div
 						key={`${x}-${y}`}
-						className="aspect-square bg-base-100 rounded flex items-center justify-center text-6xl font-bold cursor-pointer hover:bg-primary hover:text-primary-content transition-colors duration-150"
-						// onClick={() => onCellClick(x, y)}
-					>
-						{cell.status === "reserved"
-							? "R"
-							: cell.status === "used"
-								? "U"
-								: ""}
-					</div>
+						className={`aspect-square bg-base-100 rounded flex items-center justify-center text-6xl font-bold cursor-pointer hover:bg-primary hover:text-primary-content transition-colors duration-150`}
+						style={{
+							backgroundColor:
+								cell.status === "reserved" || cell.status === "used"
+									? colors[cell.occupiedBy]
+									: undefined,
+						}}
+						onClick={() => onCellClick(x, y)}
+					></div>
 				)),
 			)}
 		</div>
@@ -139,9 +142,10 @@ function Shape({
 					row.map((cell, x) => (
 						<div
 							key={`${y}-${x}`}
-							className={`w-${cellSz} h-${cellSz} ${
+							className={`${
 								cell === 1 ? "bg-white" : "bg-transparent"
 							} flex items-center justify-center`}
+							style={{ width: cellSz, height: cellSz }}
 						>
 							{x === 0 && y === 0 ? (
 								<div className={`w-2 h-2 rounded-xl bg-red-500`}></div>
@@ -157,25 +161,27 @@ function Shape({
 function Hand({
 	cards,
 	onCardClick,
-	selectedNumIndex,
+	selectedCardId,
 }: {
 	cards: Record<string, MemoryCard>;
-	onCardClick: (i: number) => void;
-	selectedNumIndex: number | null;
+	onCardClick: (i: string) => void;
+	selectedCardId: string | null;
 }) {
 	return (
 		<div>
 			<div className="flex gap-2 justify-center p-2 bg-base-200 rounded-lg">
-				{Object.values(cards).map((card, i) => (
+				{Object.keys(cards).map((id, i) => (
 					<div
 						key={i}
 						className={`card w-24 h-32 p-2 ${
-							selectedNumIndex === i ? "bg-accent" : "bg-primary"
+							selectedCardId === id ? "bg-accent" : "bg-primary"
 						} text-primary-content shadow-lg flex flex-col items-center cursor-pointer hover:bg-accent transition-colors duration-150`}
-						onClick={() => onCardClick(i)}
+						onClick={() => onCardClick(id)}
 					>
-						<span className="mt-2 text-lg font-bold mr-auto">{card.cost}</span>
-						<Shape card={card} cellSz={5} />
+						<span className="mt-2 text-lg font-bold mr-auto">
+							{cards[id].cost}
+						</span>
+						<Shape card={cards[id]} cellSz={20} />
 					</div>
 				))}
 			</div>
@@ -230,7 +236,7 @@ function Missions({
 							className={`card w-24 h-24 p-2 bg-secondary text-primary-content shadow-lg flex flex-col items-center`}
 						>
 							<span className="font-bold mr-auto">{card.cost}</span>
-							<Shape card={card} cellSz={3} />
+							<Shape card={card} cellSz={12} />
 						</div>
 					);
 				})}
@@ -291,7 +297,7 @@ export default function RoomPage() {
 	const myStatus = user?.id
 		? (gameState?.playerStatus[user?.id] ?? null)
 		: null;
-	const ws = useRef<WebSocket | null>(null);
+	const ws = useRef<ReconnectingWebSocket | null>(null);
 
 	const activePlayerIds = user
 		? (gameState?.players.filter(
@@ -304,7 +310,7 @@ export default function RoomPage() {
 	const currentPlayer =
 		gameState?.players[gameState.currentPlayerIndex] ?? null;
 
-	const [selectedNumIndex, setSelectedNumIndex] = useState<number | null>(null);
+	const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
 	//   const [selectedOperation, setSelectedOperation] = useState<Operation>("add");
 
 	// const [winnerDisplay, setWinnerDisplay] = useState(0);
@@ -331,7 +337,7 @@ export default function RoomPage() {
 
 		const wsUrl = `${proto}//${fullHost}${prefix}/games/${roomId}/ws?playerId=${user.id}&playerName=${user.name}`;
 
-		const socket = new WebSocket(wsUrl);
+		const socket = new ReconnectingWebSocket(wsUrl);
 		ws.current = socket;
 
 		socket.onopen = () => {
@@ -377,21 +383,18 @@ export default function RoomPage() {
 			ws.current.send(message);
 		}
 	}
-	// const handleCellClick = (x: number, y: number) => {
-	// if (!gameState || !user || !user.id || selectedNumIndex === null) return;
-	// sendWsMessage({
-	// 	type: "makeMove",
-	// 	payload: {
-	// 		x,
-	// 		y,
-	// 		operation: selectedOperation,
-	// 		num: gameState.hands[user.id][selectedNumIndex],
-	// 		numIndex: selectedNumIndex,
-	// 	},
-	// });
-	// setSelectedNumIndex(null);
-	// setSelectedOperation("add");
-	// };
+	const handleCellClick = (x: number, y: number) => {
+		if (!gameState || !user || !user.id || selectedCardId === null) return;
+		sendWsMessage({
+			type: "reserveMemory",
+			payload: {
+				memoryCardId: selectedCardId,
+				x,
+				y,
+			},
+		});
+		setSelectedCardId(null);
+	};
 
 	// const handleWinnersPlusClick = () => {
 	//   setWinnerDisplay(winnerDisplay + 1);
@@ -861,7 +864,9 @@ export default function RoomPage() {
 						remainingTime={Math.ceil(remainingTime / 1000)}
 					/>
 					<GameBoard
-						board={gameState.board} /* onCellClick={handleCellClick} */
+						board={gameState.board}
+						onCellClick={handleCellClick}
+						colors={gameState.colors}
 					/>
 				</div>
 				{/* Player's Info */}
@@ -876,8 +881,8 @@ export default function RoomPage() {
 						{gameState.hands[user.id] && (
 							<Hand
 								cards={gameState.hands[user.id].memory}
-								onCardClick={setSelectedNumIndex}
-								selectedNumIndex={selectedNumIndex}
+								onCardClick={setSelectedCardId}
+								selectedCardId={selectedCardId}
 							/>
 						)}
 						{/* <div className="flex flex-col items-center gap-2"></div>
