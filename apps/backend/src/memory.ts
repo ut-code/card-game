@@ -104,7 +104,7 @@ const COLOR_PALETTE = [
 	"#cc5600",
 	"#80409c",
 	"#512d10",
-	"#333333",
+	"#000000",
 ];
 
 export class Memory extends RoomMatch<GameState> {

@@ -134,6 +134,7 @@ function Shape({
 	card: MemoryCard | FunctionCard;
 	cellSz: number;
 }) {
+	const originY = card.shape.findIndex((r) => r[0] === 1);
 	return (
 		<div className="items-center h-full">
 			<div
@@ -152,7 +153,7 @@ function Shape({
 							} flex items-center justify-center`}
 							style={{ width: cellSz, height: cellSz }}
 						>
-							{x === 0 && y === 0 ? (
+							{x === 0 && y === originY ? (
 								<div className={`w-2 h-2 rounded-xl bg-red-500`}></div>
 							) : null}
 						</div>
@@ -370,22 +371,28 @@ export default function RoomPage() {
 	const handleCellClick = (x: number, y: number) => {
 		if (!gameState || !user || !user.id) return;
 		if (selectedCardId) {
+			const originY = gameState.hands[user.id].memory[
+				selectedCardId
+			].shape.findIndex((r) => r[0] === 1);
 			sendWsMessage({
 				type: "reserveMemory",
 				payload: {
 					memoryCardId: selectedCardId,
 					x,
-					y,
+					y: y - originY,
 				},
 			});
 			setSelectedCardId(null);
 		} else if (selectedFuncId) {
+			const originY = gameState.hands[user.id].func[
+				selectedFuncId
+			].shape.findIndex((r) => r[0] === 1);
 			sendWsMessage({
 				type: "execFunction",
 				payload: {
 					functionCardId: selectedFuncId,
 					x,
-					y,
+					y: y - originY,
 				},
 			});
 			setSelectedFuncId(null);
