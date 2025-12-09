@@ -1,6 +1,3 @@
-/** biome-ignore-all lint/a11y/noStaticElementInteractions: TODO */
-/** biome-ignore-all lint/suspicious/noArrayIndexKey: TODO */
-/** biome-ignore-all lint/a11y/useKeyWithClickEvents: TODO */
 import type {
 	CellState,
 	FunctionCard,
@@ -63,26 +60,29 @@ function GameBoard({
 	onCellClick: (x: number, y: number) => void;
 	colors: { [playerId: string]: string };
 }) {
+	const cells = board.flatMap((row, y) =>
+		row.map((cell, x) => ({ cell, x, y })),
+	);
+
 	return (
 		<div
 			className="aspect-square bg-base-300 grid gap-2 p-2 rounded-lg shadow-inner max-w-2xs mx-auto"
 			style={{ gridTemplateColumns: `repeat(${board.length}, 1fr)` }}
 		>
-			{board.map((row, y) =>
-				row.map((cell, x) => (
-					<div
-						key={`${x}-${y}`}
-						className={`aspect-square bg-base-100 rounded flex items-center justify-center text-6xl font-bold cursor-pointer hover:bg-primary hover:text-primary-content transition-colors duration-150`}
-						style={{
-							backgroundColor:
-								cell.status === "reserved" || cell.status === "used"
-									? colors[cell.occupiedBy]
-									: undefined,
-						}}
-						onClick={() => onCellClick(x, y)}
-					></div>
-				)),
-			)}
+			{cells.map(({ cell, x, y }) => (
+				<button
+					key={`cell-${x}-${y}`}
+					type="button"
+					className={`aspect-square bg-base-100 rounded flex items-center justify-center text-6xl font-bold cursor-pointer hover:bg-primary hover:text-primary-content transition-colors duration-150`}
+					style={{
+						backgroundColor:
+							cell.status === "reserved" || cell.status === "used"
+								? colors[cell.occupiedBy]
+								: undefined,
+					}}
+					onClick={() => onCellClick(x, y)}
+				/>
+			))}
 		</div>
 	);
 }
@@ -129,6 +129,10 @@ function Shape({
 	card: MemoryCard | FunctionCard;
 	cellSz: number;
 }) {
+	const shapeCells = card.shape.flatMap((row, y) =>
+		row.map((cell, x) => ({ cell, x, y })),
+	);
+
 	return (
 		<div className="items-center h-full">
 			<div
@@ -138,21 +142,19 @@ function Shape({
 					gridTemplateColumns: `repeat(${card.shape[0].length}, 1fr)`,
 				}}
 			>
-				{card.shape.map((row, y) =>
-					row.map((cell, x) => (
-						<div
-							key={`${y}-${x}`}
-							className={`${
-								cell === 1 ? "bg-white" : "bg-transparent"
-							} flex items-center justify-center`}
-							style={{ width: cellSz, height: cellSz }}
-						>
-							{x === 0 && y === 0 ? (
-								<div className={`w-2 h-2 rounded-xl bg-red-500`}></div>
-							) : null}
-						</div>
-					)),
-				)}
+				{shapeCells.map(({ cell, x, y }) => (
+					<div
+						key={`shape-${x}-${y}`}
+						className={`${
+							cell === 1 ? "bg-white" : "bg-transparent"
+						} flex items-center justify-center`}
+						style={{ width: cellSz, height: cellSz }}
+					>
+						{x === 0 && y === 0 ? (
+							<div className={`w-2 h-2 rounded-xl bg-red-500`} />
+						) : null}
+					</div>
+				))}
 			</div>
 		</div>
 	);
@@ -170,9 +172,10 @@ function Hand({
 	return (
 		<div>
 			<div className="flex gap-2 justify-center p-2 bg-base-200 rounded-lg">
-				{Object.keys(cards).map((id, i) => (
-					<div
-						key={i}
+				{Object.keys(cards).map((id) => (
+					<button
+						key={`memcard-${id}`}
+						type="button"
 						className={`card w-24 h-32 p-2 ${
 							selectedCardId === id ? "bg-accent" : "bg-primary"
 						} text-primary-content shadow-lg flex flex-col items-center cursor-pointer hover:bg-accent transition-colors duration-150`}
@@ -181,8 +184,8 @@ function Hand({
 						<span className="mt-2 text-lg font-bold mr-auto">
 							{cards[id].cost}
 						</span>
-						<Shape card={cards[id]} cellSz={20} />
-					</div>
+						<Shape card={cards[id]} cellSz={5} />
+					</button>
 				))}
 			</div>
 		</div>
@@ -683,12 +686,13 @@ export default function RoomPage() {
 						</select>
 					</label>
 				</div>
-				<div
+				<button
+					type="button"
 					onClick={handleReadyClick}
 					className={`card w-32 h-20 cursor-pointer items-center justify-center transition-colors duration-150 ${myStatus === "ready" ? "bg-green-500 text-white font-bold" : "bg-base-300 text-grey-700 shadow-lg"}`}
 				>
 					{myStatus === "ready" ? "READY!!" : "ready?"}
-				</div>
+				</button>
 				<button
 					onClick={handleLeaveRoom}
 					className="btn btn-error"

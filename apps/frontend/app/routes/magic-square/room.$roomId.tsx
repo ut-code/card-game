@@ -1,6 +1,3 @@
-/** biome-ignore-all lint/a11y/noStaticElementInteractions: TODO */
-/** biome-ignore-all lint/suspicious/noArrayIndexKey: TODO */
-/** biome-ignore-all lint/a11y/useKeyWithClickEvents: TODO */
 import type {
 	GameState,
 	MessageType,
@@ -60,22 +57,25 @@ function GameBoard({
 	board: (number | null)[][];
 	onCellClick: (x: number, y: number) => void;
 }) {
+	const cells = board.flatMap((row, y) =>
+		row.map((cell, x) => ({ cell, x, y })),
+	);
+
 	return (
 		<div
 			className="aspect-square bg-base-300 grid gap-2 p-2 rounded-lg shadow-inner max-w-2xs mx-auto"
 			style={{ gridTemplateColumns: `repeat(${board.length}, 1fr)` }}
 		>
-			{board.map((row, y) =>
-				row.map((cell, x) => (
-					<div
-						key={`${x}-${y}`}
-						className="aspect-square bg-base-100 rounded flex items-center justify-center text-6xl font-bold cursor-pointer hover:bg-primary hover:text-primary-content transition-colors duration-150"
-						onClick={() => onCellClick(x, y)}
-					>
-						{cell}
-					</div>
-				)),
-			)}
+			{cells.map(({ cell, x, y }) => (
+				<button
+					key={`cell-${x}-${y}`}
+					type="button"
+					className="aspect-square bg-base-100 rounded flex items-center justify-center text-6xl font-bold cursor-pointer hover:bg-primary hover:text-primary-content transition-colors duration-150"
+					onClick={() => onCellClick(x, y)}
+				>
+					{cell}
+				</button>
+			))}
 		</div>
 	);
 }
@@ -87,28 +87,30 @@ function FinalGameBoard({
 	board: (number | null)[][];
 	winnerary: (true | false)[][];
 }) {
+	const cells = board.flatMap((row, y) =>
+		row.map((cell, x) => ({ cell, x, y })),
+	);
+
 	return (
 		<div
 			className="aspect-square bg-base-300 grid gap-2 p-2 rounded-lg shadow-inner"
 			style={{ gridTemplateColumns: `repeat(${board.length}, 1fr)` }}
 		>
-			{board.map((row, y) =>
-				row.map((cell, x) =>
-					winnerary[y][x] === true ? (
-						<div
-							key={`${x}-${y}`}
-							className="aspect-square bg-yellow-500 rounded flex items-center justify-center text-6xl font-bold cursor-pointer transition-colors duration-150"
-						>
-							{cell}
-						</div>
-					) : (
-						<div
-							key={`${x}-${y}`}
-							className="aspect-square bg-base-100 rounded flex items-center justify-center text-6xl font-bold cursor-pointer transition-colors duration-150"
-						>
-							{cell}
-						</div>
-					),
+			{cells.map(({ cell, x, y }) =>
+				winnerary[y][x] === true ? (
+					<div
+						key={`result-${x}-${y}`}
+						className="aspect-square bg-yellow-500 rounded flex items-center justify-center text-6xl font-bold cursor-pointer transition-colors duration-150"
+					>
+						{cell}
+					</div>
+				) : (
+					<div
+						key={`result-${x}-${y}`}
+						className="aspect-square bg-base-100 rounded flex items-center justify-center text-6xl font-bold cursor-pointer transition-colors duration-150"
+					>
+						{cell}
+					</div>
 				),
 			)}
 		</div>
@@ -124,17 +126,20 @@ function Hand({
 	onCardClick: (i: number) => void;
 	selectedNumIndex: number | null;
 }) {
+	const cardItems = cards.map((card, i) => ({ card, index: i }));
+
 	return (
 		<div>
 			<div className="flex gap-2 justify-center p-2 bg-base-200 rounded-lg">
-				{cards.map((card, i) => (
-					<div
-						key={i}
-						className={`card w-16 h-24 ${selectedNumIndex === i ? "bg-accent" : "bg-primary"} text-primary-content shadow-lg flex items-center justify-center cursor-pointer hover:bg-accent transition-colors duration-150`}
-						onClick={() => onCardClick(i)}
+				{cardItems.map(({ card, index }) => (
+					<button
+						key={`card-${card}-${index}`}
+						type="button"
+						className={`card w-16 h-24 ${selectedNumIndex === index ? "bg-accent" : "bg-primary"} text-primary-content shadow-lg flex items-center justify-center cursor-pointer hover:bg-accent transition-colors duration-150`}
+						onClick={() => onCardClick(index)}
 					>
 						<span className="text-4xl font-bold">{card}</span>
-					</div>
+					</button>
 				))}
 			</div>
 		</div>
@@ -151,18 +156,20 @@ function Operations({
 	return (
 		<div>
 			<div className="flex gap-2 justify-center p-2 bg-base-200 rounded-lg">
-				<div
+				<button
+					type="button"
 					className={`card w-12 h-12 ${selectedOperation === "add" ? "bg-accent" : "bg-primary"} text-primary-content shadow-lg flex items-center justify-center cursor-pointer hover:bg-accent transition-colors duration-150`}
 					onClick={() => onOperationClick("add")}
 				>
 					<span className="text-4xl font-bold">+</span>
-				</div>
-				<div
+				</button>
+				<button
+					type="button"
 					className={`card w-12 h-12 ${selectedOperation === "sub" ? "bg-accent" : "bg-primary"} text-primary-content shadow-lg flex items-center justify-center cursor-pointer hover:bg-accent transition-colors duration-150`}
 					onClick={() => onOperationClick("sub")}
 				>
 					<span className="text-4xl font-bold">-</span>
-				</div>
+				</button>
 			</div>
 		</div>
 	);
@@ -649,18 +656,20 @@ export default function RoomPage() {
 						</select>
 					</label>
 				</div>
-				<div
+				<button
+					type="button"
 					onClick={handleReadyClick}
 					className={`card w-32 h-20 cursor-pointer items-center justify-center transition-colors duration-150 ${myStatus === "ready" ? "bg-green-500 text-white font-bold" : "bg-base-300 text-grey-700 shadow-lg"}`}
 				>
 					{myStatus === "ready" ? "READY!!" : "ready?"}
-				</div>
-				<div
+				</button>
+				<button
+					type="button"
 					onClick={handleSpectatorClick}
 					className={` btn text-white ${myStatus === "spectatingReady" ? "bg-green-500 font-bold" : "bg-neutral text-grey-700 shadow-lg"}`}
 				>
 					Spectator Mode
-				</div>
+				</button>
 				<button
 					onClick={handleLeaveRoom}
 					className="btn btn-error"
