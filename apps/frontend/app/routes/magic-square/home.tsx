@@ -1,6 +1,14 @@
 import type { User } from "@apps/backend";
 import { useEffect, useState } from "react";
-import { useLoaderData, useNavigate } from "react-router";
+import {
+	type ClientActionFunctionArgs,
+	Form,
+	redirect,
+	useActionData,
+	useLoaderData,
+	useNavigation,
+	useSubmit,
+} from "react-router";
 import { client } from "~/lib/client";
 import { IS_DEV } from "~/lib/env";
 
@@ -11,32 +19,148 @@ type Room = {
 };
 
 export async function clientLoader() {
+	let user: (User & { createdAt: Date | null }) | null = null;
+	let rooms: Room[] = [];
+
 	try {
 		const res = await client.users.me.$get({});
+		if (res.ok) {
+			const data = await res.json();
+			user = {
+				...data,
+				createdAt: data.createdAt ? new Date(data.createdAt) : null,
+			};
+		} else {
+			const newUserName = `player-${Math.floor(Math.random() * 100000)}`;
+			const createRes = await client.users.create.$post({
+				json: { name: newUserName },
+			});
+			const data = await createRes.json();
+			user = {
+				...data,
+				createdAt: data.createdAt ? new Date(data.createdAt) : null,
+			};
+		}
+	} catch (e) {
+		console.error("User fetch/create failed", e);
+		return null;
+	}
 
-		if (!res.ok) throw new Error("Failed to fetch user.", { cause: res });
-		const user = await res.json();
-		const createdAt = user.createdAt ? new Date(user.createdAt) : null;
+	if (IS_DEV) {
+		try {
+			const res = await client.rooms.$get();
+			if (res.ok) {
+				rooms = await res.json();
+			}
+		} catch (e) {
+			console.error("Rooms fetch failed", e);
+		}
+	}
 
-		return { ...user, createdAt };
+	return { user, rooms };
+}
+
+export async function clientAction({ request }: ClientActionFunctionArgs) {
+	const formData = await request.formData();
+	const intent = formData.get("intent");
+
+	try {
+		switch (intent) {
+			case "create-room": {
+				const nameInput = formData.get("roomName") as string;
+				const roomName =
+					nameInput || `room-${Math.floor(Math.random() * 100000)}`;
+
+				const res = await client.rooms.create.$post({
+					json: { name: roomName, gameTitle: "magic-square" },
+				});
+
+				if (!res.ok) return { error: "Failed to create room" };
+				const newRoom = await res.json();
+				return redirect(`/magic-square/room/${newRoom.id}`);
+			}
+
+			case "join-room-secret": {
+				const secret = formData.get("secret") as string;
+				if (!secret) return { error: "Secret is required" };
+
+				const res = await client.rooms.join.$post({
+					json: { secret },
+				});
+
+				if (!res.ok) return { error: "Failed to join room (Invalid secret?)" };
+				const data = await res.json();
+				return redirect(`/magic-square/room/${data.id}`);
+			}
+
+			case "dev-join-room-id": {
+				const roomId = formData.get("roomId") as string;
+				const res = await client.rooms[":roomId"].join.$post({
+					param: { roomId },
+				});
+				if (res.ok) return redirect(`/magic-square/room/${roomId}`);
+				return { error: "Failed to join room" };
+			}
+
+			case "change-name": {
+				const newName = formData.get("newName") as string;
+				if (!newName) return { error: "Name is required" };
+
+				const res = await client.users.me.$patch({
+					json: { newName },
+				});
+				if (!res.ok) return { error: "Failed to update name" };
+
+				return { success: true };
+			}
+
+			default:
+				return { error: "Unknown action" };
+		}
 	} catch (e) {
 		console.error(e);
-		return null;
+		return { error: "Unexpected error occurred" };
 	}
 }
 
 export default function Lobby() {
-	const me = useLoaderData<typeof clientLoader>();
-	const [user, setUser] = useState<User | null>(me ?? null);
-	const [rooms, setRooms] = useState<Room[]>([]);
-	const [userName, setUserName] = useState(user?.name ?? "");
-	const [newUserName, setNewUserName] = useState("");
-	const [newRoomName, setNewRoomName] = useState("");
-	const [joinRoomSecret, setJoinRoomSecret] = useState("");
-	const [joinError, setJoinError] = useState<string | null>(null);
-	const navigate = useNavigate();
+	const loaderData = useLoaderData<typeof clientLoader>();
+	const actionData = useActionData<typeof clientAction>();
+	const submit = useSubmit();
+	const navigation = useNavigation();
+
 	const [step, setStep] = useState(0);
 	const [isEditingName, setIsEditingName] = useState(false);
+	const [pendingName, setPendingName] = useState<string | null>(null);
+
+	useEffect(() => {
+		const userName = loaderData?.user?.name;
+		if (userName && pendingName && userName === pendingName) {
+			setPendingName(null);
+		}
+	}, [loaderData?.user, pendingName]);
+
+	if (!loaderData) return <div>Failed to load user data.</div>;
+	const { user, rooms } = loaderData;
+
+	const handleNameChange = (formData: FormData) => {
+		const newName = formData.get("newName") as string;
+		setPendingName(newName);
+		submit(formData, { method: "post" });
+		setIsEditingName(false);
+	};
+
+	const displayName = pendingName ?? user.name;
+
+	const isCreatingRoom =
+		(navigation.state === "submitting" || navigation.state === "loading") &&
+		navigation.formData?.get("intent") === "create-room";
+	const isJoiningRoom =
+		(navigation.state === "submitting" || navigation.state === "loading") &&
+		navigation.formData?.get("intent") === "join-room-secret";
+	const isJoiningRoomById =
+		(navigation.state === "submitting" || navigation.state === "loading") &&
+		navigation.formData?.get("intent") === "dev-join-room-id";
 
 	const instructions = [
 		"盤上に数字を置いていき、自分のミッションを誰よりも早く達成することを狙うゲームです。",
@@ -45,195 +169,114 @@ export default function Lobby() {
 		"制限時間を過ぎると強制的にパスになるので注意！",
 	];
 
-	useEffect(() => {
-		if (!IS_DEV) return;
-		const fetchRooms = async () => {
-			const res = await client.rooms.$get();
-			if (res.ok) {
-				const data = await res.json();
-				setRooms(data);
-			}
-		};
-		fetchRooms();
-	}, []);
-
-	useEffect(() => {
-		if (user) return;
-		const newUserName = `player-${Math.floor(Math.random() * 100000)}`;
-		const handleCreateUser = async () => {
-			const res = await client.users.create.$post({
-				json: { name: newUserName },
-			});
-			const data = await res.json();
-			const createdAt = data.createdAt ? new Date(data.createdAt) : null;
-			setUser({ ...data, createdAt });
-			setUserName(data.name);
-		};
-		handleCreateUser();
-	}, [user]);
-
-	const handleCreateRoom = async () => {
-		const roomName =
-			newRoomName || `room-${Math.floor(Math.random() * 100000)}`;
-		const res = await client.rooms.create.$post({
-			json: { name: roomName, gameTitle: "magic-square" },
-		});
-		if (res.ok) {
-			const newRoom = await res.json();
-			navigate(`/magic-square/room/${newRoom.id}`);
-		}
-	};
-
-	const handleChangeName = async () => {
-		if (!newUserName) return;
-		setUserName(newUserName);
-		try {
-			const res = await client.users.me.$patch({
-				json: { newName: newUserName },
-			});
-			if (res.ok) {
-				const data = await res.json();
-				const createdAt = data.createdAt ? new Date(data.createdAt) : null;
-				setUser({ ...data, createdAt });
-			}
-		} catch (e) {
-			console.error(e);
-		}
-	};
-
-	const handleJoinRoom = async (roomId: string) => {
-		try {
-			const res = await client.rooms[":roomId"].join.$post({
-				param: { roomId },
-			});
-			if (res.ok) {
-				navigate(`/magic-square/room/${roomId}`);
-			}
-		} catch (e) {
-			console.error(e);
-		}
-	};
-
-	const handleJoinWithSecret = async () => {
-		if (!joinRoomSecret) return;
-		setJoinError(null);
-		try {
-			const res = await client.rooms.join.$post({
-				json: { secret: joinRoomSecret },
-			});
-			if (res.ok) {
-				const data = await res.json();
-				navigate(`/magic-square/room/${data.id}`);
-			} else {
-				setJoinError("Failed to join room");
-			}
-		} catch (e) {
-			console.error(e);
-		}
-	};
-
-	if (!user) return null;
-
 	return (
 		<div className="p-8">
 			<h1 className="text-3xl font-bold mb-4">Lobby</h1>
-			{isEditingName ? (
-				<form
-					className="flex items-center gap-2 mb-8"
-					onSubmit={(e) => {
-						e.preventDefault();
-						handleChangeName();
-						setIsEditingName(false);
-					}}
-				>
-					<input
-						type="text"
-						placeholder="New name"
-						className="input input-bordered w-full max-w-xs"
-						value={newUserName}
-						onChange={(e) => setNewUserName(e.target.value)}
-						required
-					/>
-					<button className="btn btn-primary" type="submit">
-						Save
-					</button>
-				</form>
-			) : (
-				<div className="mb-8 flex gap-4 items-center">
-					<p className="mb-2">Welcome, {userName}!</p>
-					<button
-						className="btn btn-sm btn-outline"
-						onClick={() => setIsEditingName(true)}
-						type="button"
+
+			<div className="mb-8">
+				{isEditingName ? (
+					<Form
+						method="post"
+						className="flex items-center gap-2"
+						onSubmit={(e) => {
+							e.preventDefault();
+							const formData = new FormData(e.currentTarget);
+							handleNameChange(formData);
+						}}
 					>
-						Change Name
-					</button>
-				</div>
-			)}
+						<input type="hidden" name="intent" value="change-name" />
+						<input
+							type="text"
+							name="newName"
+							placeholder="New name"
+							defaultValue={displayName}
+							className="input input-bordered w-full max-w-xs"
+							required
+						/>
+						<button className="btn btn-primary" type="submit">
+							Save
+						</button>
+						<button
+							type="button"
+							className="btn btn-ghost"
+							onClick={() => setIsEditingName(false)}
+						>
+							Cancel
+						</button>
+					</Form>
+				) : (
+					<div className="flex gap-4 items-center">
+						<p className="mb-2">Welcome, {displayName}!</p>
+						<button
+							className="btn btn-sm btn-outline"
+							onClick={() => setIsEditingName(true)}
+							type="button"
+						>
+							Change Name
+						</button>
+					</div>
+				)}
+			</div>
 
 			<div className="grid grid-cols-1 md:grid-cols-2 gap-8">
 				<div className="space-y-8">
 					<div>
 						<h2 className="text-2xl font-bold mb-4">Create a Room</h2>
 						<div className="card bg-base-100 shadow-xl">
-							<form
-								className="card-body"
-								onSubmit={(e) => {
-									e.preventDefault();
-									handleCreateRoom();
-								}}
-							>
+							<Form method="post" className="card-body">
+								<input type="hidden" name="intent" value="create-room" />
 								<input
 									type="text"
+									name="roomName"
 									placeholder="Room name (optional)"
 									className="input input-bordered w-full"
-									value={newRoomName}
-									onChange={(e) => setNewRoomName(e.target.value)}
 								/>
 								<div className="card-actions justify-end mt-4">
-									<button className="btn btn-primary" type="submit">
-										Create Room
+									<button
+										className="btn btn-primary"
+										type="submit"
+										disabled={isCreatingRoom}
+									>
+										{isCreatingRoom ? "Creating..." : "Create Room"}
 									</button>
 								</div>
-							</form>
+							</Form>
 						</div>
 					</div>
+
 					<div>
 						<h2 className="text-2xl font-bold mb-4">Join a Room</h2>
 						<div className="card bg-base-100 shadow-xl">
-							<form
-								className="card-body"
-								onSubmit={(e) => {
-									e.preventDefault();
-									handleJoinWithSecret();
-								}}
-							>
-								{joinError && (
+							<Form method="post" className="card-body">
+								<input type="hidden" name="intent" value="join-room-secret" />
+								{actionData?.error && (
 									<div className="alert alert-error shadow-lg mb-4">
-										<div>
-											<span>{joinError}</span>
-										</div>
+										<span>{actionData.error}</span>
 									</div>
 								)}
 								<input
 									type="text"
+									name="secret"
 									placeholder="Enter secret code"
 									className="input input-bordered w-full"
-									value={joinRoomSecret}
-									onChange={(e) => setJoinRoomSecret(e.target.value)}
 									required
 								/>
 								<div className="card-actions justify-end mt-4">
-									<button className="btn btn-secondary" type="submit">
-										Join Room
+									<button
+										className="btn btn-secondary"
+										type="submit"
+										disabled={isJoiningRoom}
+									>
+										{isJoiningRoom ? "Joining..." : "Join Room"}
 									</button>
 								</div>
-							</form>
+							</Form>
 						</div>
 					</div>
 				</div>
+
 				<button
-					type="submit"
+					type="button"
 					className="btn btn-primary"
 					onClick={() => {
 						setStep(0);
@@ -244,6 +287,7 @@ export default function Lobby() {
 				>
 					How to play
 				</button>
+
 				<dialog id="my_modal_4" className="modal">
 					<div className="modal-box flex h-5/6 w-4/5 max-w-5xl flex-col">
 						<form method="dialog">
@@ -292,27 +336,44 @@ export default function Lobby() {
 						</div>
 					</div>
 				</dialog>
+
 				{IS_DEV && (
 					<div>
 						<h2 className="text-2xl font-bold mb-4">Available Rooms (Debug)</h2>
 						<div className="space-y-4">
-							{rooms.map((room) => (
-								<div key={room.id} className="card bg-base-100 shadow-md">
-									<div className="card-body">
-										<h3 className="text-xl">{room.name}</h3>
-										<p>{room.users.length} players</p>
-										<div className="card-actions justify-end">
-											<button
-												className="btn btn-secondary"
-												type="button"
-												onClick={() => handleJoinRoom(room.id)}
-											>
-												Join without Secret
-											</button>
+							{rooms.map((room) => {
+								const isJoiningThisRoom =
+									isJoiningRoomById &&
+									navigation.formData?.get("roomId") === room.id;
+
+								return (
+									<div key={room.id} className="card bg-base-100 shadow-md">
+										<div className="card-body">
+											<h3 className="text-xl">{room.name}</h3>
+											<p>{room.users.length} players</p>
+											<div className="card-actions justify-end">
+												<Form method="post">
+													<input
+														type="hidden"
+														name="intent"
+														value="dev-join-room-id"
+													/>
+													<input type="hidden" name="roomId" value={room.id} />
+													<button
+														className="btn btn-secondary"
+														type="submit"
+														disabled={isJoiningThisRoom}
+													>
+														{isJoiningThisRoom
+															? "Joining..."
+															: "Join without Secret"}
+													</button>
+												</Form>
+											</div>
 										</div>
 									</div>
-								</div>
-							))}
+								);
+							})}
 						</div>
 					</div>
 				)}

@@ -314,6 +314,7 @@ export default function RoomPage() {
 
 	// const [winnerDisplay, setWinnerDisplay] = useState(0);
 	const [remainingTime, setRemainingTime] = useState(0);
+	const [isLeavingRoom, setIsLeavingRoom] = useState(false);
 	// const [spectatedPlayerId, setSpectatedPlayerId] = useState<string | null>(
 	//   null
 	// );
@@ -423,6 +424,7 @@ export default function RoomPage() {
 	// };
 
 	const handleLeaveRoom = async () => {
+		setIsLeavingRoom(true);
 		sendWsMessage({ type: "removePlayer" });
 		if (roomId) {
 			await client.rooms[":roomId"].leave.$post({ param: { roomId } });
@@ -687,9 +689,21 @@ export default function RoomPage() {
 				>
 					{myStatus === "ready" ? "READY!!" : "ready?"}
 				</div>
-				<div onClick={handleLeaveRoom} className="btn btn-error">
-					Leave Room
-				</div>
+				<button
+					onClick={handleLeaveRoom}
+					className="btn btn-error"
+					disabled={isLeavingRoom}
+					type="button"
+				>
+					{isLeavingRoom ? (
+						<>
+							<span className="loading loading-spinner loading-sm" />
+							Leaving...
+						</>
+					) : (
+						"Leave Room"
+					)}
+				</button>
 			</div>
 		);
 	}

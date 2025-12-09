@@ -257,6 +257,7 @@ export default function RoomPage() {
 	const [spectatedPlayerId, setSpectatedPlayerId] = useState<string | null>(
 		null,
 	);
+	const [isLeavingRoom, setIsLeavingRoom] = useState(false);
 
 	// WebSocket connection effect
 	useEffect(() => {
@@ -366,6 +367,7 @@ export default function RoomPage() {
 	};
 
 	const handleLeaveRoom = async () => {
+		setIsLeavingRoom(true);
 		sendWsMessage({ type: "removePlayer" });
 		if (roomId) {
 			await client.rooms[":roomId"].leave.$post({ param: { roomId } });
@@ -659,9 +661,21 @@ export default function RoomPage() {
 				>
 					Spectator Mode
 				</div>
-				<div onClick={handleLeaveRoom} className="btn btn-error">
-					Leave Room
-				</div>
+				<button
+					onClick={handleLeaveRoom}
+					className="btn btn-error"
+					disabled={isLeavingRoom}
+					type="button"
+				>
+					{isLeavingRoom ? (
+						<>
+							<span className="loading loading-spinner loading-sm" />
+							Leaving...
+						</>
+					) : (
+						"Leave Room"
+					)}
+				</button>
 			</div>
 		);
 	}
