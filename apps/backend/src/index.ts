@@ -209,6 +209,10 @@ const apiApp = new Hono<{
 			throw new HTTPException(404, { message: "Room not found" });
 		}
 
+		if (room.users.length >= 10 && !room.users.includes(user.id)) {
+			throw new HTTPException(403, { message: "Room is full" });
+		}
+
 		if (!room.users.includes(user.id)) {
 			const newUsers = [...room.users, user.id];
 			await db
@@ -262,6 +266,10 @@ const apiApp = new Hono<{
 
 		if (!room) {
 			throw new HTTPException(404, { message: "Room not found" });
+		}
+
+		if (room.users.length >= 10 && !room.users.includes(user.id)) {
+			throw new HTTPException(403, { message: "Room is full" });
 		}
 
 		if (!room.users.includes(user.id)) {

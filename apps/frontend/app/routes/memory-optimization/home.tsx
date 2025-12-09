@@ -104,15 +104,23 @@ export default function Lobby() {
 	};
 
 	const handleJoinRoom = async (roomId: string) => {
+		setJoinError(null);
 		try {
 			const res = await client.rooms[":roomId"].join.$post({
 				param: { roomId },
 			});
 			if (res.ok) {
 				navigate(`/memory-optimization/room/${roomId}`);
+			} else {
+				const errorData =
+					((await res.json()) as unknown as { message: string }).message ||
+					"Failed to join room";
+				setJoinError(errorData);
+				alert(errorData);
 			}
 		} catch (e) {
 			console.error(e);
+			alert("An unexpected error occurred.");
 		}
 	};
 
@@ -127,10 +135,15 @@ export default function Lobby() {
 				const data = await res.json();
 				navigate(`/memory-optimization/room/${data.id}`);
 			} else {
-				setJoinError("Failed to join room");
+				const errorData =
+					((await res.json()) as unknown as { message: string }).message ||
+					"Failed to join room";
+				setJoinError(errorData);
+				alert(errorData);
 			}
 		} catch (e) {
 			console.error(e);
+			setJoinError("An unexpected error occurred.");
 		}
 	};
 
