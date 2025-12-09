@@ -59,7 +59,7 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 		}
 
 		const { 0: client, 1: server } = new WebSocketPair();
-		await this.handleSession(server, playerId, playerName);
+		await this.handleSession(server, playerId, playerName, server);
 
 		return new Response(null, {
 			status: 101,
@@ -67,10 +67,15 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 		});
 	}
 
-	async handleSession(ws: WebSocket, playerId: string, playerName: string) {
+	async handleSession(
+		ws: WebSocket,
+		playerId: string,
+		playerName: string,
+		server: WebSocket,
+	) {
 		const session: Session = { ws, playerId };
 		this.sessions.push(session);
-		ws.accept();
+		this.ctx.acceptWebSocket(server);
 
 		await this.addPlayer(playerId, playerName);
 
