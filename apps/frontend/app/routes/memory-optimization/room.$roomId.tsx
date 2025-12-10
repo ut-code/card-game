@@ -3,6 +3,7 @@
 /** biome-ignore-all lint/a11y/useKeyWithClickEvents: TODO */
 import type {
 	CellState,
+	EventCard,
 	FunctionCard,
 	GameState,
 	MemoryCard,
@@ -230,6 +231,42 @@ function Missions({
 	);
 }
 
+function EventCards({
+	title,
+	cards,
+	onEventClick,
+	selectedEventId,
+}: {
+	title: string;
+	cards: Record<string, EventCard>;
+	onEventClick: ((i: string) => void) | null;
+	selectedEventId: string | null;
+}) {
+	return (
+		<div className="border-2 rounded-lg bg-base-200 p-2 border-warning">
+			<div className="text-warning font-semibold">{title}</div>
+			<div className="flex gap-2 justify-center flex-wrap">
+				{Object.keys(cards).map((id) => {
+					const card = cards[id];
+					return (
+						<div
+							key={id}
+							className={`card w-32 h-20 p-2 ${selectedEventId === id ? "bg-accent" : "bg-warning"} text-warning-content shadow-lg flex flex-col cursor-pointer hover:bg-accent transition-colors duration-150`}
+							onClick={() => {
+								if (onEventClick) onEventClick(id);
+							}}
+						>
+							<div className="text-xs font-bold overflow-hidden text-ellipsis">
+								{card.description}
+							</div>
+						</div>
+					);
+				})}
+			</div>
+		</div>
+	);
+}
+
 // --- Main Page Component ---
 
 function TurnDisplay({
@@ -297,6 +334,7 @@ export default function RoomPage() {
 
 	const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
 	const [selectedFuncId, setSelectedFuncId] = useState<string | null>(null);
+	const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
 	// const [winnerDisplay, setWinnerDisplay] = useState(0);
 	const [remainingTime, setRemainingTime] = useState(0);
@@ -396,6 +434,16 @@ export default function RoomPage() {
 				},
 			});
 			setSelectedFuncId(null);
+		} else if (selectedEventId) {
+			sendWsMessage({
+				type: "execEvent",
+				payload: {
+					eventCardId: selectedEventId,
+					x,
+					y,
+				},
+			});
+			setSelectedEventId(null);
 		} else return;
 	};
 
@@ -432,6 +480,10 @@ export default function RoomPage() {
 			await client.rooms[":roomId"].leave.$post({ param: { roomId } });
 		}
 		navigate("/memory-optimization");
+	};
+
+	const handleBuyEventCard = () => {
+		sendWsMessage({ type: "buyEventCard" });
 	};
 
 	// --- Render Logic ---
@@ -844,7 +896,17 @@ export default function RoomPage() {
 		}
 		return (
 			<div className="p-4 md:p-8 flex flex-col gap-4">
-				<div className="font-semibold">Password:{roomSecret}</div>
+				<div className="flex justify-between items-center mb-4">
+					<div className="font-semibold">Password: {roomSecret}</div>
+					<div className="flex gap-4 text-sm">
+						<div className="bg-primary text-primary-content px-3 py-1 rounded">
+							Clock: {gameState.clocks[user.id] || 0}
+						</div>
+						<div className="bg-secondary text-secondary-content px-3 py-1 rounded">
+							Points: {gameState.points[user.id] || 0}
+						</div>
+					</div>
+				</div>
 				{/* Opponent's Info */}
 				{opponentIds && (
 					<div className="flex justify-center gap-4 mb-4">
@@ -883,10 +945,24 @@ export default function RoomPage() {
 							onFuncClick={(i: string) => {
 								setSelectedFuncId(i);
 								setSelectedCardId(null);
+								setSelectedEventId(null);
 							}}
 							selectedFuncId={selectedFuncId}
 						/>
 					)}
+					{gameState.hands[user.id].event &&
+						Object.keys(gameState.hands[user.id].event).length > 0 && (
+							<EventCards
+								title="your event cards"
+								cards={gameState.hands[user.id].event}
+								onEventClick={(i: string) => {
+									setSelectedEventId(i);
+									setSelectedCardId(null);
+									setSelectedFuncId(null);
+								}}
+								selectedEventId={selectedEventId}
+							/>
+						)}
 					<div className="flex flex-row items-end gap-4">
 						{gameState.hands[user.id] && (
 							<Hand
@@ -894,25 +970,33 @@ export default function RoomPage() {
 								onCardClick={(i: string) => {
 									setSelectedCardId(i);
 									setSelectedFuncId(null);
+									setSelectedEventId(null);
 								}}
 								selectedCardId={selectedCardId}
 							/>
 						)}
-						{/* <div className="flex flex-col items-center gap-2"></div>
-						<Operations
-							onOperationClick={setSelectedOperation}
-							selectedOperation={selectedOperation}
-						/>
-						<button
-							type="button"
-							disabled={currentPlayer.id !== user.id}
-							className="btn btn-primary hover:btn-accent"
-							onClick={() => {
-								sendWsMessage({ type: "pass" });
-							}}
-						>
-							PASS
-						</button> */}
+						<div className="flex flex-col items-center gap-2">
+							<button
+								type="button"
+								disabled={
+									currentPlayer.id !== user.id || gameState.clocks[user.id] < 3
+								}
+								className="btn btn-warning hover:btn-warning-focus"
+								onClick={handleBuyEventCard}
+							>
+								Buy Event Card (3 clock)
+							</button>
+							<button
+								type="button"
+								disabled={currentPlayer.id !== user.id}
+								className="btn btn-primary hover:btn-accent"
+								onClick={() => {
+									sendWsMessage({ type: "pass" });
+								}}
+							>
+								PASS
+							</button>
+						</div>
 					</div>
 				</div>
 				{gameState.status === "paused" && (

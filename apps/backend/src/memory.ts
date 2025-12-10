@@ -346,6 +346,8 @@ export class Memory extends RoomMatch<GameState> {
 						COLOR_PALETTE[
 							this.state.players.findIndex((player) => player.id === id)
 						];
+					this.state.clocks[id] = 10; //TODO: 調整可能にする
+					this.state.points[id] = 0;
 					break;
 				case "spectatingReady":
 					this.state.playerStatus[id] = "spectating";
@@ -458,6 +460,8 @@ export class Memory extends RoomMatch<GameState> {
 			// If we wrapped around the active players list, increment the round.
 			this.state.round += 1;
 		}
+
+		this.state.clocks[nextActivePlayer.id] += 1;
 
 		// Decrease active effects duration for all players
 		for (const player of this.state.players) {
