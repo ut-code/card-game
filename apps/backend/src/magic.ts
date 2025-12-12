@@ -1,4 +1,5 @@
 import type { Env } from "hono/types";
+import { chooseBestMove } from "./magic-cpu";
 import { type Mission, missions } from "./mission";
 import { RoomMatch, type RoomState } from "./room";
 
@@ -432,7 +433,7 @@ export class Magic extends RoomMatch<GameState> {
 	}
 
 	async cpuMakeMove(cpuId: string) {
-		await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate thinking time
+		await new Promise((resolve) => setTimeout(resolve, 1000));
 
 		console.log("CPU making move:", cpuId);
 		if (!this.state) return;
@@ -440,67 +441,40 @@ export class Magic extends RoomMatch<GameState> {
 		const hand = this.state.hands[cpuId];
 		if (!hand || hand.length === 0) return;
 
-		const randomChoice = this.cpuRandomChoice(this.state.board, hand);
+		const myMission = this.state.missions[cpuId]?.mission;
+		if (!myMission) {
+			await this.pass();
+			return;
+		}
 
-		if (!randomChoice) {
-			this.pass();
+		const opponentMissions: Mission[] = [];
+		for (const playerId of this.state.players.map((p) => p.id)) {
+			if (playerId !== cpuId && this.state.missions[playerId]) {
+				opponentMissions.push(this.state.missions[playerId].mission);
+			}
+		}
+
+		const bestMove = chooseBestMove(
+			this.state.board,
+			myMission,
+			opponentMissions,
+			hand,
+			this.state.rules.negativeDisabled,
+		);
+
+		if (!bestMove) {
+			await this.pass();
 			return;
 		}
 
 		await this.makeMove(
 			cpuId,
-			randomChoice.x,
-			randomChoice.y,
-			hand[randomChoice.handIndex],
-			randomChoice.operation,
-			randomChoice.handIndex,
+			bestMove.x,
+			bestMove.y,
+			hand[bestMove.handIndex],
+			bestMove.operation,
+			bestMove.handIndex,
 		);
-
-		// random
-		// const size = this.state.rules.boardSize;
-		// let targetX = -1;
-		// let targetY = -1;
-
-		// for (let y = 0; y < size; y++) {
-		// 	for (let x = 0; x < size; x++) {
-		// 		if (this.state.board[y][x] === null) {
-		// 			targetX = x;
-		// 			targetY = y;
-		// 			break;
-		// 		}
-		// 	}
-		// 	if (targetX !== -1) break;
-		// }
-
-		// if (targetX === -1) {
-		// 	await this.pass();
-		// 	return;
-		// }
-
-		// const numIndex = 0;
-		// const num = hand[numIndex];
-		// const operation: Operation = "add";
-
-		// await this.makeMove(cpuId, targetX, targetY, num, operation, numIndex);
-	}
-
-	cpuRandomChoice(board: (number | null)[][], hand: number[]) {
-		if (Math.random() < 0.1) return null;
-
-		const size = board.length;
-		const [randomX, randomY] = [
-			Math.floor(Math.random() * size),
-			Math.floor(Math.random() * size),
-		];
-		const randomHandIndex = Math.floor(Math.random() * hand.length);
-		const randomOperation: Operation = Math.random() < 0.8 ? "add" : "sub";
-
-		return {
-			x: randomX,
-			y: randomY,
-			handIndex: randomHandIndex,
-			operation: randomOperation,
-		};
 	}
 
 	async pass() {
@@ -605,12 +579,10 @@ export class Magic extends RoomMatch<GameState> {
 				const nullinary = [];
 				for (let j = 0; j < this.state.rules.boardSize; j++) {
 					if (i === 0) {
-						nullinary.push(
-							this.state.board[j][this.state.rules.boardSize - j - 1],
-						);
+						nullinary.push(this.state.board[j][j]);
 					} else {
 						nullinary.push(
-							this.state.board[this.state.rules.boardSize - j - 1][j],
+							this.state.board[j][this.state.rules.boardSize - j - 1],
 						);
 					}
 				}
@@ -618,9 +590,9 @@ export class Magic extends RoomMatch<GameState> {
 				if (this.isWinner(diaary, mission)) {
 					for (let j = 0; j < this.state.rules.boardSize; j++) {
 						if (i === 0) {
-							matrix[j][this.state.rules.boardSize - j - 1] = true;
+							matrix[j][j] = true;
 						} else {
-							matrix[this.state.rules.boardSize - j - 1][j] = true;
+							matrix[j][this.state.rules.boardSize - j - 1] = true;
 						}
 					}
 				}
