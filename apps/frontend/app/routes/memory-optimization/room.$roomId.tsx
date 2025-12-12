@@ -58,11 +58,20 @@ function GameBoard({
 	board,
 	onCellClick,
 	colors,
+	cardShape,
 }: {
 	board: CellState[][];
 	onCellClick: (x: number, y: number) => void;
 	colors: { [playerId: string]: string };
+	cardShape: (0 | 1)[][] | null;
 }) {
+	const size = board.length;
+	const originY = cardShape?.findIndex((r) => r[0] === 1);
+	const [boardForShading, setBoardForShading] = useState<(0 | 1)[][]>(
+		Array(size)
+			.fill(null)
+			.map(() => Array(size).fill(0)),
+	);
 	return (
 		<div
 			className="aspect-square bg-base-300 grid gap-2 p-2 rounded-lg shadow-inner max-w-2xs mx-auto"
@@ -72,12 +81,52 @@ function GameBoard({
 				row.map((cell, x) => (
 					<div
 						key={`${x}-${y}`}
-						className={`aspect-square bg-base-100 rounded flex items-center justify-center text-6xl font-bold cursor-pointer hover:bg-primary hover:text-primary-content transition-colors duration-150`}
+						className={`aspect-square bg-base-100 rounded flex items-center justify-center text-6xl font-bold cursor-pointer transition-colors duration-150`}
 						style={{
 							backgroundColor:
-								cell.status === "used" ? colors[cell.occupiedBy] : undefined,
+								cell.status === "used"
+									? colors[cell.occupiedBy]
+									: boardForShading[y][x] === 1
+										? "#aaaaaa"
+										: undefined,
 						}}
-						onClick={() => onCellClick(x, y)}
+						onClick={() => {
+							setBoardForShading(
+								Array(size)
+									.fill(null)
+									.map(() => Array(size).fill(0)),
+							);
+							onCellClick(x, y);
+						}}
+						onMouseEnter={() => {
+							if (!cardShape) return;
+							let newBoardForShading = Array(size)
+								.fill(null)
+								.map(() => Array(size).fill(0));
+							outerLoop: for (let dy = 0; dy < cardShape.length; dy++) {
+								for (let dx = 0; dx < cardShape[dy].length; dx++) {
+									if (cardShape[dy][dx] === 1) {
+										const newY = y - originY! + dy;
+										const newX = x + dx;
+										if (
+											newY < 0 ||
+											newY >= size ||
+											newX < 0 ||
+											newX >= size ||
+											board[newY][newX].status !== "free"
+										) {
+											newBoardForShading = Array(size)
+												.fill(null)
+												.map(() => Array(size).fill(0));
+											break outerLoop;
+										} else {
+											newBoardForShading[newY][newX] = 1;
+										}
+									}
+								}
+							}
+							setBoardForShading(newBoardForShading);
+						}}
 					>
 						{cell.status === "reserved" && (
 							<div
@@ -872,6 +921,11 @@ export default function RoomPage() {
 						board={gameState.board}
 						onCellClick={handleCellClick}
 						colors={gameState.colors}
+						cardShape={
+							selectedCardId
+								? gameState.hands[user.id].memory[selectedCardId].shape
+								: null
+						}
 					/>
 				</div>
 				{/* Player's Info */}
