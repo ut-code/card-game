@@ -107,7 +107,11 @@ function GameBoard({
 							outerLoop: for (let dy = 0; dy < cardShape.length; dy++) {
 								for (let dx = 0; dx < cardShape[dy].length; dx++) {
 									if (cardShape[dy][dx] === 1) {
-										const newY = y - originY! + dy;
+										if (originY === undefined) {
+											console.error("Invalid card shape");
+											continue;
+										}
+										const newY = y - originY + dy;
 										const newX = x + dx;
 										if (
 											newY < 0 ||
