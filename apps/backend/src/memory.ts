@@ -1,5 +1,5 @@
 import type { Env } from "hono/types";
-import { functionCards, memoryCards } from "./memory-card";
+import { eventCards, functionCards, memoryCards } from "./memory-card";
 // import { type Mission, missions } from "./mission";
 import { RoomMatch, type RoomState } from "./room";
 
@@ -19,6 +19,9 @@ type ExecFunctionAction = {
 
 type ExecEventAction = {
 	eventCardId: string;
+	x?: number; // single-cell や area の場合の起点X座標
+	y?: number; // single-cell や area の場合の起点Y座標
+	targetPlayerId?: string; // player ターゲットの場合
 };
 
 type Rule =
@@ -57,7 +60,53 @@ export type FunctionCard = {
 export type EventCard = {
 	definitionId: string;
 	description: string;
+	effect: EventEffectType;
 };
+
+type EventEffectType =
+	| {
+			type: "destroy-memory";
+			area:
+				| "any-3by3"
+				| "any-2by2"
+				| "any-one"
+				| "peripheral"
+				| "center-2by2"
+				| "center-3by3";
+	  } // used & reserved memory -> free (requires x, y for "any-*")
+	| {
+			type: "free-memory";
+			area:
+				| "any-3by3"
+				| "any-2by2"
+				| "any-one"
+				| "peripheral"
+				| "center-2by2"
+				| "center-3by3";
+	  } // only used memory -> free (requires x, y for "any-*")
+	| {
+			type: "reset-memory-hand";
+			target: "self" | "any-one-opponent" | "all-opponents";
+	  }
+	| {
+			type: "reset-function-hand";
+			target: "self" | "any-one-opponent" | "all-opponents";
+	  }
+	| {
+			type: "draw-more-function-cards";
+			count: number;
+	  }
+	| {
+			type: "freeze-player";
+			target: "any-one-opponent" | "all-opponents";
+			turns: number;
+	  } // cannot play for specified turns
+	| {
+			type: "double-points";
+			target: "self" | "all";
+			turns: number;
+	  } // double points for specified turns
+	| { type: "use-after-free"; count: number }; // can execute function cards on at most specified number of free cells
 
 // GameState extends RoomState to include game-specific properties
 export type GameState = RoomState & {
@@ -78,6 +127,13 @@ export type GameState = RoomState & {
 	colors: { [playerId: string]: string };
 	timeLimitUnix: number;
 	timeoutId?: ReturnType<typeof setTimeout>;
+	activeEffects: {
+		[playerId: string]: {
+			frozen?: number; // turns remaining
+			doublePoints?: number; // turns remaining
+			useAfterFree?: number; // count of free cells that can be used
+		};
+	};
 };
 
 // Combined message types for both room and game actions
@@ -85,6 +141,7 @@ export type MessageType =
 	| { type: "reserveMemory"; payload: ReserveMemoryAction }
 	| { type: "execFunction"; payload: ExecFunctionAction }
 	| { type: "execEvent"; payload: ExecEventAction }
+	| { type: "buyEventCard"; payload?: undefined }
 	| { type: "setReady"; payload?: undefined }
 	| { type: "cancelReady"; payload?: undefined }
 	| { type: "changeRule"; payload: Rule }
@@ -122,6 +179,19 @@ export class Memory extends RoomMatch<GameState> {
 			const { type, payload } = JSON.parse(
 				message.data as string,
 			) as MessageType;
+
+			// Check if player is frozen before allowing game actions
+			if (
+				this.state?.activeEffects[playerId]?.frozen &&
+				(type === "reserveMemory" ||
+					type === "execFunction" ||
+					type === "execEvent" ||
+					type === "buyEventCard")
+			) {
+				console.log("Player is frozen and cannot perform actions:", playerId);
+				return;
+			}
+
 			switch (type) {
 				// Game actions
 				case "reserveMemory":
@@ -141,7 +211,16 @@ export class Memory extends RoomMatch<GameState> {
 					);
 					break;
 				case "execEvent":
-					await this.execEvent(playerId, payload.eventCardId);
+					await this.execEvent(
+						playerId,
+						payload.eventCardId,
+						payload.x,
+						payload.y,
+						payload.targetPlayerId,
+					);
+					break;
+				case "buyEventCard":
+					await this.buyEventCard(playerId);
 					break;
 				case "pass":
 					await this.pass();
@@ -193,6 +272,7 @@ export class Memory extends RoomMatch<GameState> {
 			points: {},
 			colors: {},
 			timeLimitUnix: Date.now() + DEFAULT_TIME_LIMIT_MS,
+			activeEffects: {},
 		};
 		await this.ctx.storage.put("gameState", this.state);
 		this.broadcast({ type: "state", payload: this.state });
@@ -266,6 +346,8 @@ export class Memory extends RoomMatch<GameState> {
 						COLOR_PALETTE[
 							this.state.players.findIndex((player) => player.id === id)
 						];
+					this.state.clocks[id] = 10; //TODO: 調整可能にする
+					this.state.points[id] = 0;
 					break;
 				case "spectatingReady":
 					this.state.playerStatus[id] = "spectating";
@@ -274,6 +356,12 @@ export class Memory extends RoomMatch<GameState> {
 				default:
 					this.state.playerStatus[id] satisfies never;
 			}
+			this.state.colors[id] =
+				COLOR_PALETTE[
+					this.state.players.findIndex((player) => player.id === id)
+				];
+
+			this.state.activeEffects[id] = {};
 		}
 
 		const firstPlayingIndex = this.state.players.findIndex(
@@ -371,6 +459,32 @@ export class Memory extends RoomMatch<GameState> {
 		if (nextActivePlayerIndex === 0) {
 			// If we wrapped around the active players list, increment the round.
 			this.state.round += 1;
+		}
+
+		this.state.clocks[nextActivePlayer.id] += 1;
+
+		// Decrease active effects duration for all players
+		for (const player of this.state.players) {
+			const effects = this.state.activeEffects[player.id];
+			if (!effects) continue;
+
+			// Decrease frozen turns
+			if (effects.frozen !== undefined) {
+				effects.frozen--;
+				if (effects.frozen <= 0) {
+					delete effects.frozen;
+				}
+			}
+
+			// Decrease double points turns
+			if (effects.doublePoints !== undefined) {
+				effects.doublePoints--;
+				if (effects.doublePoints <= 0) {
+					delete effects.doublePoints;
+				}
+			}
+
+			// use-after-free is consumed when used, not by turns
 		}
 
 		await this.ctx.storage.put("gameState", this.state);
@@ -489,6 +603,13 @@ export class Memory extends RoomMatch<GameState> {
 		}
 
 		this.mutateBoard(playerId, x, y, "function", card.shape);
+
+		// Consume use-after-free effect if it was used
+		if (this.state.activeEffects[playerId]?.useAfterFree) {
+			// Clear use-after-free effect after use
+			delete this.state.activeEffects[playerId].useAfterFree;
+		}
+
 		this.advanceTurnAndRound();
 
 		delete this.state.hands[playerId].func[functionCardId];
@@ -498,7 +619,12 @@ export class Memory extends RoomMatch<GameState> {
 		this.state.clocks[playerId] -= card.cost;
 
 		// TODO: ポイント加算ロジックを調整する
-		this.state.points[playerId] += card.cost;
+		let pointsToAdd = card.cost;
+		// Apply double points effect if active
+		if (this.state.activeEffects[playerId]?.doublePoints) {
+			pointsToAdd *= 2;
+		}
+		this.state.points[playerId] += pointsToAdd;
 
 		this.state.timeLimitUnix = Date.now() + this.state.rules.timeLimit * 1000;
 		clearTimeout(this.state.timeoutId);
@@ -510,8 +636,295 @@ export class Memory extends RoomMatch<GameState> {
 		this.broadcast({ type: "state", payload: this.state });
 	}
 
-	execEvent(playerId: string, eventCardId: string) {
-		console.log("execEvent called", playerId, eventCardId);
+	async buyEventCard(playerId: string) {
+		if (!this.state) throw new Error("Game state is not initialized");
+
+		const cost = 3; // TODO: 調整可能にする
+		if (this.state.clocks[playerId] < cost) {
+			console.error("Not enough clock to buy event card:", playerId);
+			return;
+		}
+
+		this.state.clocks[playerId] -= cost;
+
+		const keys = Object.keys(eventCards);
+		const randomKey = keys[Math.floor(Math.random() * keys.length)];
+		const randomEventCard: EventCard = {
+			definitionId: randomKey,
+			...eventCards[randomKey],
+		};
+
+		const cardInstanceId = Math.random().toString(36);
+		this.state.hands[playerId].event[cardInstanceId] = randomEventCard;
+
+		await this.ctx.storage.put("gameState", this.state);
+		this.broadcast({ type: "state", payload: this.state });
+	}
+
+	async execEvent(
+		playerId: string,
+		eventCardId: string,
+		x?: number,
+		y?: number,
+		targetPlayerId?: string,
+	) {
+		if (!this.state) throw new Error("Game state is not initialized");
+
+		// Verify the card exists in player's hand
+		const eventCard = this.state.hands[playerId]?.event[eventCardId];
+		if (!eventCard) {
+			console.error("Event card not found in player's hand:", eventCardId);
+			return;
+		}
+
+		const { effect } = eventCard;
+
+		// Execute the event effect
+		switch (effect.type) {
+			case "destroy-memory":
+			case "free-memory": {
+				const coords = this.getAreaCoordinates(effect.area, x, y);
+				if (!coords) {
+					console.error("Invalid coordinates for area effect");
+					return;
+				}
+
+				for (const [cx, cy] of coords) {
+					if (
+						cx < 0 ||
+						cy < 0 ||
+						cx >= this.state.board.length ||
+						cy >= this.state.board.length
+					) {
+						continue;
+					}
+					const cell = this.state.board[cy][cx];
+					if (effect.type === "destroy-memory") {
+						// destroy: both reserved and used -> free
+						if (cell.status === "reserved" || cell.status === "used") {
+							this.state.board[cy][cx] = { status: "free" };
+						}
+					} else {
+						// free: only used -> free
+						if (cell.status === "used") {
+							this.state.board[cy][cx] = { status: "free" };
+						}
+					}
+				}
+				break;
+			}
+
+			case "reset-memory-hand":
+			case "reset-function-hand": {
+				const targets = this.getTargetPlayers(
+					playerId,
+					effect.target,
+					targetPlayerId,
+				);
+				const handType =
+					effect.type === "reset-memory-hand" ? "memory" : "func";
+
+				for (const targetId of targets) {
+					if (!this.state.hands[targetId]) continue;
+					// Clear the hand
+					this.state.hands[targetId][handType] = {};
+					// Draw new cards
+					const newHand = this.drawInitialHand();
+					this.state.hands[targetId][handType] = newHand[handType];
+				}
+				break;
+			}
+
+			case "draw-more-function-cards": {
+				for (let i = 0; i < effect.count; i++) {
+					const keys = Object.keys(functionCards);
+					const randomKey = keys[
+						Math.floor(Math.random() * keys.length)
+					] as FunctionCard["definitionId"];
+					const newCard: FunctionCard = {
+						definitionId: randomKey,
+						...functionCards[randomKey],
+					};
+					const id = `${randomKey}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+					this.state.hands[playerId].func[id] = newCard;
+				}
+				break;
+			}
+
+			case "freeze-player": {
+				const targets = this.getTargetPlayers(
+					playerId,
+					effect.target,
+					targetPlayerId,
+				);
+				for (const targetId of targets) {
+					if (!this.state.activeEffects[targetId]) {
+						this.state.activeEffects[targetId] = {};
+					}
+					this.state.activeEffects[targetId].frozen = effect.turns;
+				}
+				break;
+			}
+
+			case "double-points": {
+				if (effect.target === "self") {
+					if (!this.state.activeEffects[playerId]) {
+						this.state.activeEffects[playerId] = {};
+					}
+					this.state.activeEffects[playerId].doublePoints = effect.turns;
+				} else {
+					// all players
+					for (const player of this.state.players) {
+						if (!this.state.activeEffects[player.id]) {
+							this.state.activeEffects[player.id] = {};
+						}
+						this.state.activeEffects[player.id].doublePoints = effect.turns;
+					}
+				}
+				break;
+			}
+
+			case "use-after-free": {
+				if (!this.state.activeEffects[playerId]) {
+					this.state.activeEffects[playerId] = {};
+				}
+				this.state.activeEffects[playerId].useAfterFree = effect.count;
+				break;
+			}
+
+			default:
+				effect satisfies never;
+		}
+
+		// Remove the used event card from hand
+		delete this.state.hands[playerId].event[eventCardId];
+
+		await this.ctx.storage.put("gameState", this.state);
+		this.broadcast({ type: "state", payload: this.state });
+	}
+
+	private getAreaCoordinates(
+		area:
+			| "any-3by3"
+			| "any-2by2"
+			| "any-one"
+			| "peripheral"
+			| "center-2by2"
+			| "center-3by3",
+		x?: number,
+		y?: number,
+	): [number, number][] | null {
+		if (!this.state) throw new Error("Game state is not initialized");
+		const boardSize = this.state.board.length;
+
+		switch (area) {
+			case "any-one":
+				if (x === undefined || y === undefined) return null;
+				return [[x, y]];
+
+			case "any-2by2":
+				if (x === undefined || y === undefined) return null;
+				return [
+					[x, y],
+					[x + 1, y],
+					[x, y + 1],
+					[x + 1, y + 1],
+				];
+
+			case "any-3by3":
+				if (x === undefined || y === undefined) return null;
+				return [
+					[x, y],
+					[x + 1, y],
+					[x + 2, y],
+					[x, y + 1],
+					[x + 1, y + 1],
+					[x + 2, y + 1],
+					[x, y + 2],
+					[x + 1, y + 2],
+					[x + 2, y + 2],
+				];
+
+			case "center-2by2": {
+				const center = Math.floor(boardSize / 2);
+				return [
+					[center - 1, center - 1],
+					[center, center - 1],
+					[center - 1, center],
+					[center, center],
+				];
+			}
+
+			case "center-3by3": {
+				const center = Math.floor(boardSize / 2);
+				return [
+					[center - 1, center - 1],
+					[center, center - 1],
+					[center + 1, center - 1],
+					[center - 1, center],
+					[center, center],
+					[center + 1, center],
+					[center - 1, center + 1],
+					[center, center + 1],
+					[center + 1, center + 1],
+				];
+			}
+
+			case "peripheral": {
+				const coords: [number, number][] = [];
+				for (let i = 0; i < boardSize; i++) {
+					// Top and bottom rows
+					coords.push([i, 0]);
+					coords.push([i, boardSize - 1]);
+					// Left and right columns (excluding corners already added)
+					if (i > 0 && i < boardSize - 1) {
+						coords.push([0, i]);
+						coords.push([boardSize - 1, i]);
+					}
+				}
+				return coords;
+			}
+
+			default:
+				area satisfies never;
+				return null;
+		}
+	}
+
+	private getTargetPlayers(
+		playerId: string,
+		target: "self" | "any-one-opponent" | "all-opponents",
+		targetPlayerId?: string,
+	): string[] {
+		if (!this.state) {
+			throw new Error("Game state is not initialized");
+		}
+
+		switch (target) {
+			case "self":
+				return [playerId];
+
+			case "any-one-opponent":
+				if (
+					!targetPlayerId ||
+					targetPlayerId === playerId ||
+					!this.state.players.find((player) => player.id === targetPlayerId)
+				) {
+					console.error(
+						"Invalid target player for any-one-opponent:",
+						targetPlayerId,
+					);
+					return [];
+				}
+				return [targetPlayerId];
+			case "all-opponents":
+				return this.state.players
+					.filter((player) => player.id !== playerId)
+					.map((player) => player.id);
+			default:
+				target satisfies never;
+				return [];
+		}
 	}
 
 	async pass() {
@@ -646,18 +1059,44 @@ export class Memory extends RoomMatch<GameState> {
 					return false;
 				}
 
+				// Check if use-after-free effect is active
+				const useAfterFreeCount =
+					this.state.activeEffects[player]?.useAfterFree || 0;
+				let freeCellsUsed = 0;
+
 				for (let dy = 0; dy < cardHeight; dy++) {
 					for (let dx = 0; dx < cardWidth; dx++) {
 						if (card.shape[dy][dx] === 1) {
 							const boardCell = this.state.board[y + dy][x + dx];
-							if (
-								!boardCell ||
-								boardCell.status !== "reserved" ||
-								boardCell.occupiedBy !== player
-							) {
-								console.error("Cell already used:", x + dx, y + dy);
+							if (!boardCell) {
+								console.error("Cell out of bounds:", x + dx, y + dy);
 								return false;
 							}
+
+							// Normal case: must be reserved by this player
+							if (
+								boardCell.status === "reserved" &&
+								boardCell.occupiedBy === player
+							) {
+								continue;
+							}
+
+							// Use-after-free case: can use free cells up to the limit
+							if (
+								boardCell.status === "free" &&
+								freeCellsUsed < useAfterFreeCount
+							) {
+								freeCellsUsed++;
+								continue;
+							}
+
+							console.error(
+								"Cell not available for function:",
+								x + dx,
+								y + dy,
+								boardCell.status,
+							);
+							return false;
 						}
 					}
 				}
