@@ -1,10 +1,9 @@
 import type { Env } from "hono/types";
+import { chooseBestMove } from "./magic-cpu";
 import { type Mission, missions } from "./mission";
 import { RoomMatch, type RoomState } from "./room";
 
 // --- Game-specific Types ---
-
-let timeout: ReturnType<typeof setTimeout>;
 
 export type Operation = "add" | "sub";
 
@@ -19,19 +18,36 @@ export type MoveAction = {
 export type Rule =
 	| { rule: "negativeDisabled"; state: boolean }
 	| { rule: "boardSize"; state: number }
-	| { rule: "timeLimit"; state: number };
+	| { rule: "timeLimit"; state: number }
+	| { rule: "cpu"; state: number };
+
+export type LastGameResult = {
+	players: {
+		id: string;
+		name: string;
+	}[];
+	winners: string[] | null;
+	winnersAry: { [playerId: string]: (true | false)[][] };
+	board: (number | null)[][];
+};
 
 // GameState extends RoomState to include game-specific properties
 export type GameState = RoomState & {
+	rules: {
+		negativeDisabled: boolean;
+		boardSize: number;
+		timeLimit: number;
+		cpu: number;
+	};
 	round: number;
-	turn: number;
+	currentPlayerIndex: number; // index in players, including spectators
 	board: (number | null)[][];
-	winners: string[] | null;
-	winnersAry: { [playerId: string]: (true | false)[][] };
+	lastGameResult: LastGameResult | null;
 	gameId: string;
 	hands: { [playerId: string]: number[] };
 	missions: { [playerId: string]: { id: string; mission: Mission } };
 	timeLimitUnix: number;
+	timeoutId?: ReturnType<typeof setTimeout>;
 };
 
 // Combined message types for both room and game actions
@@ -64,6 +80,9 @@ export class Magic extends RoomMatch<GameState> {
 			const { type, payload } = JSON.parse(
 				message.data as string,
 			) as MessageType;
+			if (!this.state) {
+				throw new Error("Game state is not initialized");
+			}
 			switch (type) {
 				// Game actions
 				case "makeMove":
@@ -81,7 +100,7 @@ export class Magic extends RoomMatch<GameState> {
 					break;
 				// Room actions (from base class)
 				case "setReady":
-					await this.setReady(playerId);
+					await this.setReady(playerId, this.state.rules.cpu);
 					break;
 				case "cancelReady":
 					await this.cancelReady(playerId);
@@ -117,17 +136,17 @@ export class Magic extends RoomMatch<GameState> {
 			players: [],
 			playerStatus: {},
 			names: {},
+			// GameState specific properties
 			rules: {
 				negativeDisabled: false,
 				boardSize: DEFAULT_BOARD_SIZE,
 				timeLimit: DEFAULT_TIME_LIMIT_MS / 1000,
+				cpu: 0,
 			},
-			// GameState specific properties
 			round: 0,
-			turn: 0,
+			currentPlayerIndex: 0,
 			board: [],
-			winners: null,
-			winnersAry: {},
+			lastGameResult: null,
 			gameId: this.ctx.id.toString(),
 			hands: {},
 			missions: {},
@@ -140,70 +159,108 @@ export class Magic extends RoomMatch<GameState> {
 	async changeRule(payload: Rule) {
 		if (!this.state || this.state.status !== "preparing") return;
 
-		if (payload.rule === "negativeDisabled") {
-			this.state.rules.negativeDisabled = payload.state;
-		} else if (payload.rule === "boardSize") {
-			this.state.rules.boardSize = payload.state;
-			this.state.board = Array(payload.state)
-				.fill(null)
-				.map(() => Array(payload.state).fill(null));
-		} else if (payload.rule === "timeLimit") {
-			this.state.rules.timeLimit = payload.state;
+		switch (payload.rule) {
+			case "negativeDisabled":
+				this.state.rules.negativeDisabled = payload.state;
+				break;
+			case "boardSize": {
+				const size = payload.state;
+				if (size < 1 || size > 6) {
+					console.error("Invalid board size:", size);
+					return;
+				}
+				this.state.rules.boardSize = size;
+				this.state.board = Array(size)
+					.fill(null)
+					.map(() => Array(size).fill(null));
+				break;
+			}
+			case "timeLimit": {
+				const timeLimit = payload.state;
+				if (timeLimit < 1) {
+					console.error("Invalid time limit:", timeLimit);
+					return;
+				}
+				this.state.rules.timeLimit = timeLimit;
+				break;
+			}
+			case "cpu":
+				this.state.rules.cpu = payload.state;
+				break;
+			default:
+				payload satisfies never;
 		}
+
 		await this.ctx.storage.put("gameState", this.state);
 		this.broadcast({ type: "state", payload: this.state });
 	}
 
 	override async startGame(): Promise<void> {
 		if (!this.state || this.state.status !== "preparing") return;
-		// The original implementation called a method to clear parts of the state.
-		// We will replicate that behavior by resetting the game-specific state here.
 		const size = this.state.rules.boardSize;
 		this.state.board = Array(size)
 			.fill(null)
 			.map(() => Array(size).fill(null));
 		this.state.round = 0;
-		this.state.winners = null;
-		this.state.winnersAry = {};
+		this.state.lastGameResult = null;
 		this.state.hands = {};
 		this.state.missions = {};
 
-		for (const playerId of this.state.players) {
+		for (let i = 0; i < this.state.rules.cpu; i++) {
+			const cpuId = `cpu-${i + 1}-${crypto.randomUUID()}`;
+			this.state.players.push({
+				id: cpuId,
+				type: "cpu",
+			});
+			this.state.names[cpuId] = `CPU ${i + 1}`;
+			this.state.playerStatus[cpuId] = "ready";
+		}
+
+		for (const id of this.state.players.map((p) => p.id)) {
+			const player = this.state.players.find((p) => p.id === id);
+			if (!player) throw new Error(`Player not found: ${id}`);
+
 			if (
-				this.state.playerStatus[playerId] !== "ready" &&
-				this.state.playerStatus[playerId] !== "spectatingReady"
+				this.state.playerStatus[id] !== "ready" &&
+				this.state.playerStatus[id] !== "spectatingReady"
 			) {
-				console.error("one of the players not ready:", playerId);
+				console.error("one of the players not ready:", id);
 				return;
 			}
-			this.state.playerStatus[playerId] =
-				this.state.playerStatus[playerId] === "ready"
-					? "playing"
-					: "spectating";
 
-			if (this.state.playerStatus[playerId] === "playing") {
-				if (this.state.hands[playerId]) {
-					console.error("player already has a hand:", playerId);
-					return;
-				}
-				this.state.hands[playerId] = this.drawInitialHand();
+			switch (this.state.playerStatus[id]) {
+				case "ready":
+					this.state.playerStatus[id] = "playing";
+					if (player.type !== "cpu") player.type = "player";
+					if (this.state.hands[id]) {
+						console.error("player already has a hand:", id);
+						return;
+					}
+					this.state.hands[id] = this.drawInitialHand();
 
-				if (this.state.missions[playerId]) {
-					console.error("player already has a mission:", playerId);
-					return;
-				}
-				this.state.missions[playerId] = this.getRandomMission();
+					if (this.state.missions[id]) {
+						console.error("player already has a mission:", id);
+						return;
+					}
+					this.state.missions[id] = this.getRandomMission();
+					break;
+				case "spectatingReady":
+					this.state.playerStatus[id] = "spectating";
+					player.type = "spectator";
+					break;
+				default:
+					this.state.playerStatus[id] satisfies never;
 			}
 		}
 
 		const firstPlayingIndex = this.state.players.findIndex(
-			(p) => this.state?.playerStatus[p] === "playing",
+			(p) => this.state?.playerStatus[p.id] === "playing",
 		);
-		this.state.turn = firstPlayingIndex;
+		this.state.currentPlayerIndex = firstPlayingIndex;
 		this.state.status = "playing";
 		this.state.timeLimitUnix = Date.now() + this.state.rules.timeLimit * 1000;
-		clearTimeout(timeout);
-		timeout = setTimeout(() => {
+		clearTimeout(this.state.timeoutId);
+		this.state.timeoutId = setTimeout(() => {
 			this.pass();
 		}, this.state.rules.timeLimit * 1000);
 
@@ -215,7 +272,7 @@ export class Magic extends RoomMatch<GameState> {
 
 	drawInitialHand() {
 		if (!this.state) return [];
-		const hand = new Array(3); // TODO: 変更可能にする
+		const hand: number[] = new Array(3); // TODO: 変更可能にする
 		for (let i = 0; i < hand.length; i++) {
 			hand[i] = this.drawCard();
 		}
@@ -244,58 +301,55 @@ export class Magic extends RoomMatch<GameState> {
 		return { id: randomKey, mission: missions[randomKey] };
 	}
 
-	advanceTurnAndRound() {
+	async advanceTurnAndRound() {
 		if (!this.state) return;
 
 		const players = this.state.players;
-		const playerStatuses = this.state.playerStatus;
-		const currentTurn = this.state.turn;
+		const currentPlayerIndex = this.state.currentPlayerIndex;
 
-		const activePlayerIds = players.filter(
-			(p) => playerStatuses[p] === "playing",
+		const activePlayers = players.filter(
+			(p) => p.type === "player" || p.type === "cpu",
 		);
-		if (activePlayerIds.length === 0) {
-			this.state.status = "paused";
-			return; // No one to advance turn to.
-		}
 
-		const currentPlayerId = players[currentTurn];
+		if (activePlayers.length === 0)
+			throw new Error("No active players to advance turn to");
 
-		// Find the index of the current player in the list of *active* players.
-		// If the current player is not active (e.g., a spectator), this will be -1.
-		const currentPlayerActiveIndex = activePlayerIds.indexOf(currentPlayerId);
+		const currentActivePlayerIndex = activePlayers.findIndex(
+			(p) => p.id === players[currentPlayerIndex].id,
+		);
 
-		let nextPlayerId: string | null = null;
+		if (currentActivePlayerIndex === -1)
+			throw new Error("Current active player not found");
 
-		if (currentPlayerActiveIndex === -1) {
-			// The turn was on an inactive player. Find the first active player after the current one.
-			let nextTurn = currentTurn;
-			for (let i = 0; i < players.length; i++) {
-				nextTurn = (nextTurn + 1) % players.length;
-				if (playerStatuses[players[nextTurn]] === "playing") {
-					nextPlayerId = players[nextTurn];
-					break;
-				}
-			}
-			if (!nextPlayerId) {
-				// Should be unreachable due to activePlayerIds.length check
-				this.state.status = "paused";
-				return;
-			}
-		} else {
-			// The current player is active. Find the next one in the active list.
-			const nextPlayerActiveIndex =
-				(currentPlayerActiveIndex + 1) % activePlayerIds.length;
-			nextPlayerId = activePlayerIds[nextPlayerActiveIndex];
+		const nextActivePlayerIndex =
+			(currentActivePlayerIndex + 1) % activePlayers.length;
 
+		const nextActivePlayer = activePlayers[nextActivePlayerIndex];
+
+		if (nextActivePlayer.type === "spectator")
+			throw new Error("Next active player cannot be a spectator");
+
+		const nextPlayerIndex = players.findIndex(
+			(p) => p.id === nextActivePlayer.id,
+		);
+
+		if (nextActivePlayer.id !== players[nextPlayerIndex].id)
+			throw new Error("Turn did not advance correctly");
+
+		this.state.currentPlayerIndex = nextPlayerIndex;
+
+		if (nextActivePlayerIndex === 0) {
 			// If we wrapped around the active players list, increment the round.
-			if (nextPlayerActiveIndex === 0) {
-				this.state.round += 1;
-			}
+			this.state.round += 1;
 		}
 
-		if (nextPlayerId) {
-			this.state.turn = players.indexOf(nextPlayerId);
+		await this.ctx.storage.put("gameState", this.state);
+		this.broadcast({ type: "state", payload: this.state });
+
+		if (nextActivePlayer.type === "cpu") {
+			this.cpuMakeMove(nextActivePlayer.id).catch((err) => {
+				console.error("CPU Error:", err);
+			});
 		}
 	}
 
@@ -307,7 +361,7 @@ export class Magic extends RoomMatch<GameState> {
 		operation: Operation,
 		numIndex: number,
 	) {
-		if (!this.state || this.state.winners) return;
+		if (!this.state || this.state.lastGameResult) return;
 
 		if (!this.isValidMove(player, x, y, num)) {
 			console.error("Invalid move attempted:", player, x, y, num);
@@ -318,59 +372,124 @@ export class Magic extends RoomMatch<GameState> {
 
 		this.state.board[y][x] = this.computeCellResult(x, y, num, operation);
 
+		clearTimeout(this.state.timeoutId);
+
 		this.advanceTurnAndRound();
 
 		const prevHand = this.state.hands[player];
 
 		this.state.hands[player] = prevHand.toSpliced(numIndex, 1, this.drawCard());
 
-		for (const id of this.state.players) {
+		for (const id of this.state.players.map((p) => p.id)) {
 			if (this.state.missions[id]) {
 				const winary = this.isVictory(this.state.missions[id].mission);
 				if (winary.some((row) => row.includes(true))) {
 					if (!this.state) throw new Error("Game state is not initialized");
-					this.state.winnersAry[id] = winary;
-					if (!this.state.winners) {
-						this.state.winners = [id];
-					} else if (!this.state.winners.includes(id)) {
-						this.state.winners.push(id);
+					if (!this.state.lastGameResult) {
+						const names = this.state.names;
+						this.state.lastGameResult = {
+							players: this.state.players.map((p) => ({
+								id: p.id,
+								name: names[p.id],
+							})),
+							winners: [id],
+							winnersAry: { [id]: winary },
+							board: this.state.board,
+						};
+					} else if (!this.state.lastGameResult.winners?.includes(id)) {
+						this.state.lastGameResult.winners?.push(id);
 					}
+					this.state.lastGameResult.winnersAry[id] = winary;
 					console.log("winary", winary);
-					console.log("this.state.winnersAry", this.state.winnersAry);
+					console.log(
+						"this.state.winnersAry",
+						this.state.lastGameResult.winnersAry,
+					);
 				}
 			}
 		}
 
-		if (this.state.winners) {
+		// someone won
+		if (this.state.lastGameResult) {
 			this.state.status = "preparing";
 			Object.keys(this.state.playerStatus).forEach((playerId) => {
 				if (!this.state) throw new Error("Game state is not initialized");
 				this.state.playerStatus[playerId] = "finished";
 			});
+			this.state.players = this.state.players.filter((p) => {
+				if (p.type !== "cpu") return true;
+				delete this.state?.playerStatus[p.id];
+				return false;
+			});
 		}
+
 		this.state.timeLimitUnix = Date.now() + this.state.rules.timeLimit * 1000;
-		clearTimeout(timeout);
-		if (!this.state.winners)
-			timeout = setTimeout(() => {
+		if (!this.state.lastGameResult)
+			this.state.timeoutId = setTimeout(() => {
 				this.pass();
 			}, this.state.rules.timeLimit * 1000);
 		await this.ctx.storage.put("gameState", this.state);
 		this.broadcast({ type: "state", payload: this.state });
 	}
 
+	async cpuMakeMove(cpuId: string) {
+		await new Promise((resolve) => setTimeout(resolve, 1000));
+
+		console.log("CPU making move:", cpuId);
+		if (!this.state) return;
+
+		const hand = this.state.hands[cpuId];
+		if (!hand || hand.length === 0) return;
+
+		const myMission = this.state.missions[cpuId]?.mission;
+		if (!myMission) {
+			await this.pass();
+			return;
+		}
+
+		const opponentMissions: Mission[] = [];
+		for (const playerId of this.state.players.map((p) => p.id)) {
+			if (playerId !== cpuId && this.state.missions[playerId]) {
+				opponentMissions.push(this.state.missions[playerId].mission);
+			}
+		}
+
+		const bestMove = chooseBestMove(
+			this.state.board,
+			myMission,
+			opponentMissions,
+			hand,
+			this.state.rules.negativeDisabled,
+		);
+
+		if (!bestMove) {
+			await this.pass();
+			return;
+		}
+
+		await this.makeMove(
+			cpuId,
+			bestMove.x,
+			bestMove.y,
+			hand[bestMove.handIndex],
+			bestMove.operation,
+			bestMove.handIndex,
+		);
+	}
+
 	async pass() {
 		if (!this.state) return;
 		this.advanceTurnAndRound();
 		this.state.timeLimitUnix = Date.now() + this.state.rules.timeLimit * 1000;
-		clearTimeout(timeout);
-		timeout = setTimeout(() => {
+		clearTimeout(this.state.timeoutId);
+		this.state.timeoutId = setTimeout(() => {
 			this.pass();
 		}, this.state.rules.timeLimit * 1000);
 		await this.ctx.storage.put("gameState", this.state);
 		this.broadcast({ type: "state", payload: this.state });
 	}
 
-	isValidMove(player: string, x: number, y: number, num: number) {
+	isValidMove(playerId: string, x: number, y: number, num: number) {
 		if (!this.state) throw new Error("Game state is not initialized");
 
 		// TODO: 調整可能にする
@@ -379,13 +498,13 @@ export class Magic extends RoomMatch<GameState> {
 			return false;
 		}
 
-		const currentPlayer = this.state.players[this.state.turn];
-		if (currentPlayer !== player) {
-			console.error("Not your turn:", player);
+		const currentPlayer = this.state.players[this.state.currentPlayerIndex];
+		if (currentPlayer.id !== playerId) {
+			console.error("Not your turn:", playerId);
 			return false;
 		}
 
-		const currentHand = this.state.hands[currentPlayer];
+		const currentHand = this.state.hands[currentPlayer.id];
 		if (!currentHand || currentHand.length === 0) {
 			console.error("Invalid hand:", currentPlayer);
 			return false;
@@ -427,8 +546,9 @@ export class Magic extends RoomMatch<GameState> {
 
 	isVictory(mission: Mission) {
 		if (!this.state) throw new Error("Game state is not initialized");
-		const matrix = Array.from({ length: this.state.rules.boardSize }, () =>
-			Array(this.state?.rules.boardSize).fill(false),
+		const matrix: boolean[][] = Array.from(
+			{ length: this.state.rules.boardSize },
+			() => Array(this.state?.rules.boardSize).fill(false),
 		);
 		if (mission.target === "column" || mission.target === "allDirection") {
 			for (let i = 0; i < this.state.rules.boardSize; i++) {
@@ -459,12 +579,10 @@ export class Magic extends RoomMatch<GameState> {
 				const nullinary = [];
 				for (let j = 0; j < this.state.rules.boardSize; j++) {
 					if (i === 0) {
-						nullinary.push(
-							this.state.board[j][this.state.rules.boardSize - j - 1],
-						);
+						nullinary.push(this.state.board[j][j]);
 					} else {
 						nullinary.push(
-							this.state.board[this.state.rules.boardSize - j - 1][j],
+							this.state.board[j][this.state.rules.boardSize - j - 1],
 						);
 					}
 				}
@@ -472,9 +590,9 @@ export class Magic extends RoomMatch<GameState> {
 				if (this.isWinner(diaary, mission)) {
 					for (let j = 0; j < this.state.rules.boardSize; j++) {
 						if (i === 0) {
-							matrix[j][this.state.rules.boardSize - j - 1] = true;
+							matrix[j][j] = true;
 						} else {
-							matrix[this.state.rules.boardSize - j - 1][j] = true;
+							matrix[j][this.state.rules.boardSize - j - 1] = true;
 						}
 					}
 				}

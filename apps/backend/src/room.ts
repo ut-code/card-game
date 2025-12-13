@@ -18,14 +18,12 @@ export interface Session {
 
 export type RoomState = {
 	status: RoomStatus;
-	players: string[];
+	players: {
+		type: "player" | "spectator" | "cpu";
+		id: string;
+	}[]; //
 	playerStatus: { [playerId: string]: PlayerStatus };
 	names: { [playerId: string]: string };
-	rules: {
-		negativeDisabled: boolean;
-		boardSize: number;
-		timeLimit: number;
-	};
 };
 
 export abstract class RoomMatch<T extends RoomState> extends DurableObject {
@@ -79,18 +77,25 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 
 		await this.addPlayer(playerId, playerName);
 
-		ws.addEventListener("message", async (msg) => {
-			this.wsMessageListener(ws, msg, playerId);
-		});
-
-		const closeOrErrorHandler = () => {
-			this.sessions = this.sessions.filter((s) => s !== session);
-			this.updateDisconnectedPlayer(playerId);
-		};
-		ws.addEventListener("close", closeOrErrorHandler);
-		ws.addEventListener("error", closeOrErrorHandler);
-
 		ws.send(JSON.stringify({ type: "state", payload: this.state }));
+	}
+
+	async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
+		const playerId = this.sessions.find((s) => s.ws === ws)?.playerId;
+		if (!playerId) {
+			console.error("[WS] No playerId found for WebSocket");
+			return;
+		}
+		const messageEvent = new MessageEvent("message", { data: message });
+		await this.wsMessageListener(ws, messageEvent, playerId);
+	}
+
+	async webSocketClose(ws: WebSocket) {
+		const session = this.sessions.find((s) => s.ws === ws);
+		if (session) {
+			this.sessions = this.sessions.filter((s) => s !== session);
+			this.updateDisconnectedPlayer(session.playerId);
+		}
 	}
 
 	broadcast(message: unknown) {
@@ -110,10 +115,13 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 		if (!this.state) return;
 
 		// New player
-		if (!this.state.players.includes(playerId)) {
+		if (!this.state.players.some((p) => p.id === playerId)) {
 			switch (this.state.status) {
 				case "preparing":
-					this.state.players.push(playerId);
+					this.state.players.push({
+						id: playerId,
+						type: "player",
+					});
 					this.state.names[playerId] = playerName;
 					this.state.playerStatus[playerId] = "preparing";
 
@@ -121,34 +129,21 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 					this.broadcast({ type: "state", payload: this.state });
 					break;
 				case "playing":
-					if (!this.state.players.includes(playerId)) {
-						this.state.players.push(playerId);
-						this.state.names[playerId] = playerName;
-						this.state.playerStatus[playerId] = "spectating";
+					this.state.players.push({
+						id: playerId,
+						type: "spectator",
+					});
+					this.state.names[playerId] = playerName;
+					this.state.playerStatus[playerId] = "spectating";
 
-						await this.ctx.storage.put("gameState", this.state);
-						this.broadcast({ type: "state", payload: this.state });
-					}
+					await this.ctx.storage.put("gameState", this.state);
+					this.broadcast({ type: "state", payload: this.state });
 					break;
 				case "paused":
-					// if (this.state.players.includes(playerId)) {
-					// 	this.state.playerStatus[playerId] = "playing";
-					// 	if (
-					// 		Object.values(this.state.playerStatus).every(
-					// 			(status) => status === "playing",
-					// 		)
-					// 	) {
-					// 		console.log("All players reconnected, resuming game.");
-					// 		this.state.status = "playing";
-					// 	} else {
-					// 		console.log("Waiting for other players to reconnect.");
-					// 	}
-					// 	await this.ctx.storage.put("gameState", this.state);
-					// 	this.broadcast({ type: "state", payload: this.state });
-					// } else {
-					// 	console.error("Game already started, cannot join now.");
-					// }
-					this.state.players.push(playerId);
+					this.state.players.push({
+						id: playerId,
+						type: "spectator",
+					});
 					this.state.names[playerId] = playerName;
 					this.state.playerStatus[playerId] = "spectating";
 
@@ -197,7 +192,7 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 	async removePlayer(playerId: string) {
 		if (!this.state) return;
 
-		this.state.players = this.state.players.filter((p) => p !== playerId);
+		this.state.players = this.state.players.filter((p) => p.id !== playerId);
 		delete this.state.playerStatus[playerId];
 		delete this.state.names[playerId];
 
@@ -211,7 +206,8 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 	}
 
 	async updateDisconnectedPlayer(playerId: string) {
-		if (!this.state || !this.state.players.includes(playerId)) return;
+		if (!this.state || !this.state.players.some((p) => p.id === playerId))
+			return;
 
 		if (!this.sessions.some((s) => s.playerId === playerId)) {
 			if (this.state.status === "preparing") {
@@ -225,13 +221,15 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 		}
 	}
 
-	async setReady(playerId: string) {
+	async setReady(playerId: string, cpu?: number) {
 		if (!this.state || this.state.status !== "preparing") return;
 		this.state.playerStatus[playerId] = "ready";
 
 		if (
 			Object.values(this.state.playerStatus).filter((s) => s === "ready")
-				.length >= 2 &&
+				.length +
+				(cpu || 0) >=
+				2 &&
 			Object.values(this.state.playerStatus).every(
 				(s) => s === "ready" || s === "spectatingReady",
 			)
