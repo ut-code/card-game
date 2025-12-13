@@ -57,7 +57,7 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 		}
 
 		const { 0: client, 1: server } = new WebSocketPair();
-		await this.handleSession(server, playerId, playerName);
+		await this.handleSession(server, playerId, playerName, server);
 
 		return new Response(null, {
 			status: 101,
@@ -65,25 +65,37 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 		});
 	}
 
-	async handleSession(ws: WebSocket, playerId: string, playerName: string) {
+	async handleSession(
+		ws: WebSocket,
+		playerId: string,
+		playerName: string,
+		server: WebSocket,
+	) {
 		const session: Session = { ws, playerId };
 		this.sessions.push(session);
-		ws.accept();
+		this.ctx.acceptWebSocket(server);
 
 		await this.addPlayer(playerId, playerName);
 
-		ws.addEventListener("message", async (msg) => {
-			this.wsMessageListener(ws, msg, playerId);
-		});
-
-		const closeOrErrorHandler = () => {
-			this.sessions = this.sessions.filter((s) => s !== session);
-			this.updateDisconnectedPlayer(playerId);
-		};
-		ws.addEventListener("close", closeOrErrorHandler);
-		ws.addEventListener("error", closeOrErrorHandler);
-
 		ws.send(JSON.stringify({ type: "state", payload: this.state }));
+	}
+
+	async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
+		const playerId = this.sessions.find((s) => s.ws === ws)?.playerId;
+		if (!playerId) {
+			console.error("[WS] No playerId found for WebSocket");
+			return;
+		}
+		const messageEvent = new MessageEvent("message", { data: message });
+		await this.wsMessageListener(ws, messageEvent, playerId);
+	}
+
+	async webSocketClose(ws: WebSocket) {
+		const session = this.sessions.find((s) => s.ws === ws);
+		if (session) {
+			this.sessions = this.sessions.filter((s) => s !== session);
+			this.updateDisconnectedPlayer(session.playerId);
+		}
 	}
 
 	broadcast(message: unknown) {

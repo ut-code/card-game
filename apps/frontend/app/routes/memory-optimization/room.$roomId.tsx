@@ -1,6 +1,3 @@
-/** biome-ignore-all lint/a11y/noStaticElementInteractions: TODO */
-/** biome-ignore-all lint/suspicious/noArrayIndexKey: TODO */
-/** biome-ignore-all lint/a11y/useKeyWithClickEvents: TODO */
 import type {
 	CellState,
 	EventCard,
@@ -80,8 +77,9 @@ function GameBoard({
 		>
 			{board.map((row, y) =>
 				row.map((cell, x) => (
-					<div
+					<button
 						key={`${x}-${y}`}
+						type="button"
 						className={`aspect-square bg-base-100 rounded flex items-center justify-center text-6xl font-bold cursor-pointer transition-colors duration-150`}
 						style={{
 							backgroundColor:
@@ -137,9 +135,9 @@ function GameBoard({
 							<div
 								className="w-6 h-6 rounded-3xl"
 								style={{ backgroundColor: colors[cell.occupiedBy] }}
-							></div>
+							/>
 						)}
-					</div>
+					</button>
 				)),
 			)}
 		</div>
@@ -230,9 +228,10 @@ function Hand({
 	return (
 		<div>
 			<div className="flex gap-2 justify-center p-2 bg-base-200 rounded-lg">
-				{Object.keys(cards).map((id, i) => (
-					<div
-						key={i}
+				{Object.keys(cards).map((id) => (
+					<button
+						key={`memcard-${id}`}
+						type="button"
 						className={`card w-24 h-32 p-2 ${
 							selectedCardId === id ? "bg-accent" : "bg-primary"
 						} text-primary-content shadow-lg flex flex-col items-center cursor-pointer hover:bg-accent transition-colors duration-150`}
@@ -241,8 +240,8 @@ function Hand({
 						<span className="mt-2 text-lg font-bold mr-auto">
 							{cards[id].cost}
 						</span>
-						<Shape card={cards[id]} cellSz={20} />
-					</div>
+						<Shape card={cards[id]} cellSz={5} />
+					</button>
 				))}
 			</div>
 		</div>
@@ -267,8 +266,9 @@ function Missions({
 				{Object.keys(cards).map((id) => {
 					const card = cards[id];
 					return (
-						<div
+						<button
 							key={id}
+							type="button"
 							className={`card w-24 h-24 p-2 ${selectedFuncId === id ? "bg-accent" : "bg-secondary"} text-primary-content shadow-lg flex flex-col items-center`}
 							onClick={() => {
 								if (onFuncClick) onFuncClick(id);
@@ -276,7 +276,7 @@ function Missions({
 						>
 							<span className="font-bold mr-auto">{card.cost}</span>
 							<Shape card={card} cellSz={12} />
-						</div>
+						</button>
 					);
 				})}
 			</div>
@@ -302,8 +302,9 @@ function EventCards({
 				{Object.keys(cards).map((id) => {
 					const card = cards[id];
 					return (
-						<div
+						<button
 							key={id}
+							type="button"
 							className={`card w-32 h-20 p-2 ${selectedEventId === id ? "bg-accent" : "bg-warning"} text-warning-content shadow-lg flex flex-col cursor-pointer hover:bg-accent transition-colors duration-150`}
 							onClick={() => {
 								if (onEventClick) onEventClick(id);
@@ -312,7 +313,7 @@ function EventCards({
 							<div className="text-xs font-bold overflow-hidden text-ellipsis">
 								{card.description}
 							</div>
-						</div>
+						</button>
 					);
 				})}
 			</div>
@@ -391,6 +392,7 @@ export default function RoomPage() {
 
 	// const [winnerDisplay, setWinnerDisplay] = useState(0);
 	const [remainingTime, setRemainingTime] = useState(0);
+	const [isLeavingRoom, setIsLeavingRoom] = useState(false);
 	// const [spectatedPlayerId, setSpectatedPlayerId] = useState<string | null>(
 	//   null
 	// );
@@ -528,6 +530,7 @@ export default function RoomPage() {
 	// };
 
 	const handleLeaveRoom = async () => {
+		setIsLeavingRoom(true);
 		sendWsMessage({ type: "removePlayer" });
 		if (roomId) {
 			await client.rooms[":roomId"].leave.$post({ param: { roomId } });
@@ -790,15 +793,28 @@ export default function RoomPage() {
 						</select>
 					</label>
 				</div>
-				<div
+				<button
+					type="button"
 					onClick={handleReadyClick}
 					className={`card w-32 h-20 cursor-pointer items-center justify-center transition-colors duration-150 ${myStatus === "ready" ? "bg-green-500 text-white font-bold" : "bg-base-300 text-grey-700 shadow-lg"}`}
 				>
 					{myStatus === "ready" ? "READY!!" : "ready?"}
-				</div>
-				<div onClick={handleLeaveRoom} className="btn btn-error">
-					Leave Room
-				</div>
+				</button>
+				<button
+					onClick={handleLeaveRoom}
+					className="btn btn-error"
+					disabled={isLeavingRoom}
+					type="button"
+				>
+					{isLeavingRoom ? (
+						<>
+							<span className="loading loading-spinner loading-sm" />
+							Leaving...
+						</>
+					) : (
+						"Leave Room"
+					)}
+				</button>
 			</div>
 		);
 	}
