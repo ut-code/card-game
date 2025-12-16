@@ -1,4 +1,4 @@
-import apiApp, { Magic } from "@apps/backend";
+import apiApp, { Magic, Memory } from "@apps/backend";
 import { Hono } from "hono";
 import type { Bindings } from "hono/types";
 import { createRequestHandler } from "react-router";
@@ -31,4 +31,4 @@ app.get("*", (c) => {
 });
 
 export default app;
-export { Magic };
+export { Magic, Memory };
