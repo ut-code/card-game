@@ -882,18 +882,18 @@ export default function RoomPage() {
 							className="select select-bordered"
 							defaultValue={gameState.rules.boardSize}
 							disabled={user.id !== roomHost}
-							// onChange={(e) =>
-							//   handleRuleChange({
-							//     rule: "boardSize",
-							//     state: parseInt(e.target.value, 10),
-							//   })
-							// }
+							onChange={(e) =>
+								handleRuleChange({
+									rule: "boardSize",
+									state: parseInt(e.target.value, 10),
+								})
+							}
 						>
-							<option value={1}>1x1</option>
-							<option value={2}>2x2</option>
-							<option value={3}>3x3</option>
-							<option value={4}>4x4</option>
-							<option value={5}>5x5</option>
+							{Array.from({ length: 17 }, (_, i) => i + 4).map((size) => (
+								<option key={size} value={size}>
+									{size}x{size}
+								</option>
+							))}
 						</select>
 					</label>
 				</div>
