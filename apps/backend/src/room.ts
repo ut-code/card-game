@@ -57,7 +57,7 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 		}
 
 		const { 0: client, 1: server } = new WebSocketPair();
-		await this.handleSession(server, playerId, playerName, server);
+		await this.handleSession(playerId, playerName, server);
 
 		return new Response(null, {
 			status: 101,
@@ -65,19 +65,13 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 		});
 	}
 
-	async handleSession(
-		ws: WebSocket,
-		playerId: string,
-		playerName: string,
-		server: WebSocket,
-	) {
-		const session: Session = { ws, playerId };
-		this.sessions.push(session);
+	async handleSession(playerId: string, playerName: string, server: WebSocket) {
 		this.ctx.acceptWebSocket(server);
 
-		await this.addPlayer(playerId, playerName);
+		const session: Session = { ws: server, playerId };
+		this.sessions.push(session);
 
-		ws.send(JSON.stringify({ type: "state", payload: this.state }));
+		await this.addPlayer(playerId, playerName);
 	}
 
 	async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
@@ -90,12 +84,24 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 		await this.wsMessageListener(ws, messageEvent, playerId);
 	}
 
-	async webSocketClose(ws: WebSocket) {
+	async webSocketClose(
+		ws: WebSocket,
+		code: number,
+		reason: string,
+		wasClean: boolean,
+	) {
+		console.log(
+			`[WS] WebSocket closed: code=${code}, reason=${reason}, wasClean=${wasClean}`,
+		);
 		const session = this.sessions.find((s) => s.ws === ws);
 		if (session) {
 			this.sessions = this.sessions.filter((s) => s !== session);
 			this.updateDisconnectedPlayer(session.playerId);
 		}
+	}
+
+	async webSocketError(_ws: WebSocket, error: unknown) {
+		console.error("[WS] WebSocket error:", error);
 	}
 
 	broadcast(message: unknown) {
@@ -155,19 +161,23 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 			}
 		} else {
 			// Reconnecting player
-			if (this.state.playerStatus[playerId] !== "error") {
-				throw new Error(
-					`Player is already connected but tried to connect again: ${this.state.playerStatus[playerId]}`,
-				);
-			}
+			console.log(
+				`[WS] Player ${playerId} reconnecting with status: ${this.state.playerStatus[playerId]}`,
+			);
+
 			switch (this.state.status) {
 				case "preparing":
-					this.state.playerStatus[playerId] = "preparing";
+					// Allow reconnection during preparing phase, keep current status
+					if (this.state.playerStatus[playerId] === "error") {
+						this.state.playerStatus[playerId] = "preparing";
+					}
+					// If already preparing/ready, just continue with existing status
 					break;
 				case "playing":
-					this.state.playerStatus[playerId] = "spectating";
+					if (this.state.playerStatus[playerId] === "error") {
+						this.state.playerStatus[playerId] = "spectating";
+					}
 					break;
-				//   throw new Error("Game already started, but trying to reconnect.");
 				case "paused":
 					this.state.playerStatus[playerId] = "playing";
 					if (
@@ -210,8 +220,15 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 			return;
 
 		if (!this.sessions.some((s) => s.playerId === playerId)) {
+			console.log(
+				`[WS] Player ${playerId} disconnected, status: ${this.state.status}`,
+			);
 			if (this.state.status === "preparing") {
-				await this.removePlayer(playerId);
+				// Keep player in the room but mark as error to allow reconnection
+				// Only fully remove if they stay disconnected for a long time
+				this.state.playerStatus[playerId] = "error";
+				await this.ctx.storage.put("gameState", this.state);
+				this.broadcast({ type: "state", payload: this.state });
 			} else {
 				this.state.playerStatus[playerId] = "error";
 				this.state.status = "paused";

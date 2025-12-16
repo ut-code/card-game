@@ -24,7 +24,12 @@ type ExecEventAction = {
 	targetPlayerId?: string; // player ターゲットの場合
 };
 
-type Rule =
+type GarbageCollectAction = {
+	x: number;
+	y: number;
+};
+
+export type Rule =
 	| { rule: "boardSize"; state: number }
 	| { rule: "timeLimit"; state: number };
 
@@ -141,6 +146,7 @@ export type MessageType =
 	| { type: "reserveMemory"; payload: ReserveMemoryAction }
 	| { type: "execFunction"; payload: ExecFunctionAction }
 	| { type: "execEvent"; payload: ExecEventAction }
+	| { type: "garbageCollect"; payload: GarbageCollectAction }
 	| { type: "buyEventCard"; payload?: undefined }
 	| { type: "setReady"; payload?: undefined }
 	| { type: "cancelReady"; payload?: undefined }
@@ -180,9 +186,13 @@ export class Memory extends RoomMatch<GameState> {
 				message.data as string,
 			) as MessageType;
 
+			if (!this.state) {
+				throw new Error("Game state is not initialized");
+			}
+
 			// Check if player is frozen before allowing game actions
 			if (
-				this.state?.activeEffects[playerId]?.frozen &&
+				this.state.activeEffects[playerId]?.frozen &&
 				(type === "reserveMemory" ||
 					type === "execFunction" ||
 					type === "execEvent" ||
@@ -219,6 +229,9 @@ export class Memory extends RoomMatch<GameState> {
 						payload.targetPlayerId,
 					);
 					break;
+				case "garbageCollect":
+					await this.garbageCollect(playerId, payload.x, payload.y);
+					break;
 				case "buyEventCard":
 					await this.buyEventCard(playerId);
 					break;
@@ -233,7 +246,7 @@ export class Memory extends RoomMatch<GameState> {
 					await this.cancelReady(playerId);
 					break;
 				case "changeRule":
-					// await this.changeRule(payload);
+					await this.changeRule(payload);
 					break;
 				case "removePlayer":
 					await this.removePlayer(playerId);
@@ -278,22 +291,20 @@ export class Memory extends RoomMatch<GameState> {
 		this.broadcast({ type: "state", payload: this.state });
 	}
 
-	// async changeRule(payload: Rule) {
-	// 	if (!this.state || this.state.status !== "preparing") return;
+	async changeRule(payload: Rule) {
+		if (!this.state || this.state.status !== "preparing") return;
 
-	// 	if (payload.rule === "negativeDisabled") {
-	// 		this.state.rules.negativeDisabled = payload.state;
-	// 	} else if (payload.rule === "boardSize") {
-	// 		this.state.rules.boardSize = payload.state;
-	// 		this.state.board = Array(payload.state)
-	// 			.fill(null)
-	// 			.map(() => Array(payload.state).fill(null));
-	// 	} else if (payload.rule === "timeLimit") {
-	// 		this.state.rules.timeLimit = payload.state;
-	// 	}
-	// 	await this.ctx.storage.put("gameState", this.state);
-	// 	this.broadcast({ type: "state", payload: this.state });
-	// }
+		if (payload.rule === "boardSize") {
+			this.state.rules.boardSize = payload.state;
+			this.state.board = Array(payload.state)
+				.fill(null)
+				.map(() => Array(payload.state).fill(null));
+		} else if (payload.rule === "timeLimit") {
+			this.state.rules.timeLimit = payload.state;
+		}
+		await this.ctx.storage.put("gameState", this.state);
+		this.broadcast({ type: "state", payload: this.state });
+	}
 
 	override async startGame(): Promise<void> {
 		if (!this.state || this.state.status !== "preparing") return;
@@ -925,6 +936,51 @@ export class Memory extends RoomMatch<GameState> {
 				target satisfies never;
 				return [];
 		}
+	}
+
+	async garbageCollect(playerId: string, x: number, y: number) {
+		if (!this.state) throw new Error("Game state is not initialized");
+
+		const currentPlayerId =
+			this.state.players[this.state.currentPlayerIndex].id;
+		if (currentPlayerId !== playerId) {
+			console.error("Not your turn:", playerId);
+			return;
+		}
+
+		if (
+			x < 0 ||
+			y < 0 ||
+			x >= this.state.board.length ||
+			y >= this.state.board.length
+		) {
+			console.error("Out of bounds:", x, y);
+			return;
+		}
+
+		const cell = this.state.board[y][x];
+		if (
+			cell.status === "free" ||
+			(cell.status === "reserved" && cell.occupiedBy !== playerId)
+		) {
+			console.error("Cell state is not applicable:", x, y);
+			return;
+		}
+
+		this.state.board[y][x] = { status: "free" };
+
+		this.state.clocks[playerId] += 1;
+
+		this.advanceTurnAndRound();
+
+		this.state.timeLimitUnix = Date.now() + this.state.rules.timeLimit * 1000;
+		clearTimeout(this.state.timeoutId);
+		this.state.timeoutId = setTimeout(() => {
+			this.pass();
+		}, this.state.rules.timeLimit * 1000);
+
+		await this.ctx.storage.put("gameState", this.state);
+		this.broadcast({ type: "state", payload: this.state });
 	}
 
 	async pass() {

@@ -5,6 +5,7 @@ import type {
 	GameState,
 	MemoryCard,
 	MessageType,
+	Rule,
 } from "@apps/backend/memory";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -240,7 +241,7 @@ function Hand({
 						<span className="mt-2 text-lg font-bold mr-auto">
 							{cards[id].cost}
 						</span>
-						<Shape card={cards[id]} cellSz={5} />
+						<Shape card={cards[id]} cellSz={16} />
 					</button>
 				))}
 			</div>
@@ -275,7 +276,7 @@ function Missions({
 							}}
 						>
 							<span className="font-bold mr-auto">{card.cost}</span>
-							<Shape card={card} cellSz={12} />
+							<Shape card={card} cellSz={16} />
 						</button>
 					);
 				})}
@@ -389,6 +390,7 @@ export default function RoomPage() {
 	const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
 	const [selectedFuncId, setSelectedFuncId] = useState<string | null>(null);
 	const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+	const [isGCMode, setIsGCMode] = useState(false);
 
 	// const [winnerDisplay, setWinnerDisplay] = useState(0);
 	const [remainingTime, setRemainingTime] = useState(0);
@@ -499,7 +501,16 @@ export default function RoomPage() {
 				},
 			});
 			setSelectedEventId(null);
-		} else return;
+		} else if (isGCMode) {
+			const cell = gameState.board[y][x];
+			if (
+				cell.status === "used" ||
+				(cell.status === "reserved" && cell.occupiedBy === user.id)
+			) {
+				handleGarbageCollect(x, y);
+				setIsGCMode(false);
+			}
+		}
 	};
 
 	// const handleWinnersPlusClick = () => {
@@ -518,15 +529,15 @@ export default function RoomPage() {
 		}
 	};
 
-	// const handleRuleChange = (rule: Rule) => {
-	// sendWsMessage({
-	// 	type: "changeRule",
-	// 	payload: rule,
-	// });
-	// };
+	const handleRuleChange = (rule: Rule) => {
+		sendWsMessage({
+			type: "changeRule",
+			payload: rule,
+		});
+	};
 
 	// const handleBackToLobby = () => {
-	//   sendWsMessage({ type: "backToLobby" });
+	// 	sendWsMessage({ type: "backToLobby" });
 	// };
 
 	const handleLeaveRoom = async () => {
@@ -540,6 +551,10 @@ export default function RoomPage() {
 
 	const handleBuyEventCard = () => {
 		sendWsMessage({ type: "buyEventCard" });
+	};
+
+	const handleGarbageCollect = (x: number, y: number) => {
+		sendWsMessage({ type: "garbageCollect", payload: { x, y } });
 	};
 
 	// --- Render Logic ---
@@ -734,7 +749,7 @@ export default function RoomPage() {
 						<span className="label-text">Board Size</span>
 						<select
 							className="select select-bordered"
-							value={gameState.rules.boardSize}
+							defaultValue={gameState.rules.boardSize}
 							disabled={user.id !== roomHost}
 							// onChange={(e) =>
 							//   handleRuleChange({
@@ -773,14 +788,14 @@ export default function RoomPage() {
 						<span className="label-text">Time Limit</span>
 						<select
 							className="select select-bordered"
-							value={gameState.rules.timeLimit}
+							defaultValue={gameState.rules.timeLimit}
 							disabled={user.id !== roomHost}
-							// onChange={(e) =>
-							//   handleRuleChange({
-							//     rule: "timeLimit",
-							//     state: parseInt(e.target.value),
-							//   })
-							// }
+							onChange={(e) =>
+								handleRuleChange({
+									rule: "timeLimit",
+									state: parseInt(e.target.value),
+								})
+							}
 						>
 							<option value={5}>5s</option>
 							<option value={10}>10s</option>
@@ -1050,6 +1065,19 @@ export default function RoomPage() {
 							/>
 						)}
 						<div className="flex flex-col items-center gap-2">
+							<button
+								type="button"
+								disabled={currentPlayer.id !== user.id}
+								className={`btn ${isGCMode ? "btn-accent" : "btn-secondary"} hover:btn-accent`}
+								onClick={() => {
+									setIsGCMode(!isGCMode);
+									setSelectedCardId(null);
+									setSelectedFuncId(null);
+									setSelectedEventId(null);
+								}}
+							>
+								Garbage Collection
+							</button>
 							<button
 								type="button"
 								disabled={
