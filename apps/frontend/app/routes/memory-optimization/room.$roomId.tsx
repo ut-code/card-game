@@ -59,12 +59,14 @@ function GameBoard({
 	colors,
 	myId,
 	cardShape,
+	highlightedCells,
 }: {
 	board: CellState[][];
 	onCellClick: (x: number, y: number) => void;
 	colors: { [playerId: string]: string };
 	myId: string;
 	cardShape: (0 | 1)[][] | null;
+	highlightedCells?: { x: number; y: number }[];
 }) {
 	const size = board.length;
 	const originY = cardShape?.findIndex((r) => r[0] === 1);
@@ -79,73 +81,81 @@ function GameBoard({
 			style={{ gridTemplateColumns: `repeat(${board.length}, 1fr)` }}
 		>
 			{board.map((row, y) =>
-				row.map((cell, x) => (
-					<button
-						key={`${x}-${y}`}
-						type="button"
-						className={`aspect-square bg-base-100 rounded flex items-center justify-center text-6xl font-bold cursor-pointer transition-colors duration-150`}
-						style={{
-							backgroundColor:
-								cell.status === "used"
-									? colors[cell.occupiedBy]
-									: boardForShading[y][x] === 1
-										? "#aaaaaa"
-										: undefined,
-						}}
-						onClick={() => {
-							setBoardForShading(
-								Array(size)
+				row.map((cell, x) => {
+					const isHighlighted = highlightedCells?.some(
+						(pos) => pos.x === x && pos.y === y,
+					);
+					return (
+						<button
+							key={`${x}-${y}`}
+							type="button"
+							className={`aspect-square bg-base-100 rounded flex items-center justify-center text-6xl font-bold cursor-pointer transition-all duration-500 ${
+								isHighlighted ? "ring-2 ring-yellow-500" : "ring-0"
+							}`}
+							style={{
+								backgroundColor:
+									cell.status === "used"
+										? colors[cell.occupiedBy]
+										: boardForShading[y][x] === 1
+											? "#aaaaaa"
+											: undefined,
+							}}
+							onClick={() => {
+								setBoardForShading(
+									Array(size)
+										.fill(null)
+										.map(() => Array(size).fill(0)),
+								);
+								onCellClick(x, y);
+							}}
+							onMouseEnter={() => {
+								if (!cardShape) return;
+								let newBoardForShading = Array(size)
 									.fill(null)
-									.map(() => Array(size).fill(0)),
-							);
-							onCellClick(x, y);
-						}}
-						onMouseEnter={() => {
-							if (!cardShape) return;
-							let newBoardForShading = Array(size)
-								.fill(null)
-								.map(() => Array(size).fill(0));
-							outerLoop: for (let dy = 0; dy < cardShape.length; dy++) {
-								for (let dx = 0; dx < cardShape[dy].length; dx++) {
-									if (cardShape[dy][dx] === 1) {
-										if (originY === undefined) {
-											console.error("Invalid card shape");
-											continue;
-										}
-										const newY = y - originY + dy;
-										const newX = x + dx;
-										const cell = board[newY][newX];
-										if (
-											newY < 0 ||
-											newY >= size ||
-											newX < 0 ||
-											newX >= size ||
-											!(
-												cell.status === "free" ||
-												(cell.status === "reserved" && cell.occupiedBy === myId)
-											)
-										) {
-											newBoardForShading = Array(size)
-												.fill(null)
-												.map(() => Array(size).fill(0));
-											break outerLoop;
-										} else {
-											newBoardForShading[newY][newX] = 1;
+									.map(() => Array(size).fill(0));
+								outerLoop: for (let dy = 0; dy < cardShape.length; dy++) {
+									for (let dx = 0; dx < cardShape[dy].length; dx++) {
+										if (cardShape[dy][dx] === 1) {
+											if (originY === undefined) {
+												console.error("Invalid card shape");
+												continue;
+											}
+											const newY = y - originY + dy;
+											const newX = x + dx;
+											const cell = board[newY][newX];
+											if (
+												newY < 0 ||
+												newY >= size ||
+												newX < 0 ||
+												newX >= size ||
+												!(
+													cell.status === "free" ||
+													(cell.status === "reserved" &&
+														cell.occupiedBy === myId)
+												)
+											) {
+												newBoardForShading = Array(size)
+													.fill(null)
+													.map(() => Array(size).fill(0));
+												break outerLoop;
+											} else {
+												newBoardForShading[newY][newX] = 1;
+											}
 										}
 									}
 								}
-							}
-							setBoardForShading(newBoardForShading);
-						}}
-					>
-						{cell.status === "reserved" && (
-							<div
-								className="w-6 h-6 rounded-3xl"
-								style={{ backgroundColor: colors[cell.occupiedBy] }}
-							/>
-						)}
-					</button>
-				)),
+								setBoardForShading(newBoardForShading);
+							}}
+						>
+							{cell.status === "reserved" && (
+								<div
+									className="w-6 h-6 rounded-3xl"
+									style={{ backgroundColor: colors[cell.occupiedBy] }}
+								/>
+							)}
+						</button>
+					);
+				}),
 			)}
 		</div>
 	);
@@ -371,6 +381,62 @@ function EventCards({
 
 // --- Main Page Component ---
 
+function LastActionBanner({
+	lastAction,
+	playerNames,
+}: {
+	lastAction?: GameState["lastAction"];
+	playerNames: { [playerId: string]: string };
+}) {
+	if (!lastAction) return null;
+
+	const playerName = playerNames[lastAction.playerId] || "Unknown";
+
+	let actionText = "";
+	let bgColor = "bg-info";
+
+	switch (lastAction.type) {
+		case "reserveMemory":
+			actionText = `${playerName} がメモリを配置${lastAction.cardCost ? ` (コスト: ${lastAction.cardCost})` : ""}`;
+			bgColor = "bg-primary";
+			break;
+		case "execFunction":
+			actionText = `${playerName} がファンクションを実行${lastAction.cardCost ? ` (コスト: ${lastAction.cardCost})` : ""}`;
+			bgColor = "bg-secondary";
+			break;
+		case "execEvent":
+			actionText = `${playerName} がイベントカードを使用: ${lastAction.eventDescription || ""}`;
+			bgColor = "bg-warning";
+			break;
+		case "garbageCollect":
+			actionText = `${playerName} がガベージコレクションを実行`;
+			bgColor = "bg-accent";
+			break;
+		case "redrawMemoryCard":
+			actionText = `${playerName} がメモリカードを引き直し`;
+			bgColor = "bg-info";
+			break;
+		case "buyEventCard":
+			actionText = `${playerName} がイベントカードを購入`;
+			bgColor = "bg-warning";
+			break;
+		case "pass":
+			actionText = `${playerName} がパス`;
+			bgColor = "bg-base-300";
+			break;
+		default:
+			return null;
+	}
+
+	return (
+		<div
+			className={`${bgColor} text-base-content px-4 py-2 rounded-lg text-center text-sm font-semibold`}
+		>
+			{actionText}
+		</div>
+	);
+}
+
 function TurnDisplay({
 	round,
 	currentPlayerId,
@@ -439,6 +505,9 @@ export default function RoomPage() {
 	const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 	const [isGCMode, setIsGCMode] = useState(false);
 	const [isRedrawMode, setIsRedrawMode] = useState(false);
+	const [highlightedCells, setHighlightedCells] = useState<
+		{ x: number; y: number }[]
+	>([]);
 
 	// const [winnerDisplay, setWinnerDisplay] = useState(0);
 	const [remainingTime, setRemainingTime] = useState(0);
@@ -503,6 +572,16 @@ export default function RoomPage() {
 			return () => clearInterval(interval);
 		}
 	}, [gameState?.timeLimitUnix]);
+
+	useEffect(() => {
+		if (gameState?.lastAction?.positions) {
+			setHighlightedCells(gameState.lastAction.positions);
+			const timer = setTimeout(() => {
+				setHighlightedCells([]);
+			}, 3000);
+			return () => clearTimeout(timer);
+		}
+	}, [gameState?.lastAction]);
 
 	function sendWsMessage({ type, payload }: MessageType): void {
 		if (ws.current?.readyState === WebSocket.OPEN) {
@@ -1078,6 +1157,10 @@ export default function RoomPage() {
 						myId={user.id}
 						remainingTime={Math.ceil(remainingTime / 1000)}
 					/>
+					<LastActionBanner
+						lastAction={gameState.lastAction}
+						playerNames={gameState.names}
+					/>
 					<GameBoard
 						board={gameState.board}
 						onCellClick={handleCellClick}
@@ -1088,6 +1171,7 @@ export default function RoomPage() {
 								? gameState.hands[user.id].memory[selectedCardId].shape
 								: null
 						}
+						highlightedCells={highlightedCells}
 					/>
 				</div>
 				{/* Player's Info */}

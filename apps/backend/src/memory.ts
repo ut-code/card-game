@@ -117,6 +117,22 @@ type EventEffectType =
 	  } // double points for specified turns
 	| { type: "use-after-free"; count: number }; // can execute function cards on at most specified number of free cells
 
+type LastAction = {
+	playerId: string;
+	type:
+		| "reserveMemory"
+		| "execFunction"
+		| "execEvent"
+		| "garbageCollect"
+		| "redrawMemoryCard"
+		| "buyEventCard"
+		| "pass";
+	positions?: { x: number; y: number }[];
+	eventDescription?: string;
+	cardCost?: number;
+	timestamp: number;
+};
+
 // GameState extends RoomState to include game-specific properties
 export type GameState = RoomState & {
 	rules: {
@@ -143,6 +159,7 @@ export type GameState = RoomState & {
 			useAfterFree?: number; // count of free cells that can be used
 		};
 	};
+	lastAction?: LastAction;
 };
 
 // Combined message types for both room and game actions
@@ -507,6 +524,15 @@ export class Memory extends RoomMatch<GameState> {
 			// use-after-free is consumed when used, not by turns
 		}
 
+		// Reset timer for the next player's turn
+		this.state.timeLimitUnix = Date.now() + this.state.rules.timeLimit * 1000;
+		clearTimeout(this.state.timeoutId);
+		if (!this.state.winners) {
+			this.state.timeoutId = setTimeout(() => {
+				this.pass();
+			}, this.state.rules.timeLimit * 1000);
+		}
+
 		await this.ctx.storage.put("gameState", this.state);
 		this.broadcast({ type: "state", payload: this.state });
 
@@ -550,6 +576,23 @@ export class Memory extends RoomMatch<GameState> {
 
 		this.mutateBoard(playerId, x, y, "memory", card.shape);
 
+		const positions: { x: number; y: number }[] = [];
+		for (let dy = 0; dy < card.shape.length; dy++) {
+			for (let dx = 0; dx < card.shape[dy].length; dx++) {
+				if (card.shape[dy][dx] === 1) {
+					positions.push({ x: x + dx, y: y + dy });
+				}
+			}
+		}
+
+		this.state.lastAction = {
+			playerId,
+			type: "reserveMemory",
+			positions,
+			cardCost: card.cost,
+			timestamp: Date.now(),
+		};
+
 		this.advanceTurnAndRound();
 
 		delete this.state.hands[playerId].memory[memoryCardId];
@@ -582,12 +625,6 @@ export class Memory extends RoomMatch<GameState> {
 				this.state.playerStatus[playerId] = "finished";
 			});
 		}
-		this.state.timeLimitUnix = Date.now() + this.state.rules.timeLimit * 1000;
-		clearTimeout(this.state.timeoutId);
-		if (!this.state.winners)
-			this.state.timeoutId = setTimeout(() => {
-				this.pass();
-			}, this.state.rules.timeLimit * 1000);
 		await this.ctx.storage.put("gameState", this.state);
 		this.broadcast({ type: "state", payload: this.state });
 	}
@@ -624,6 +661,23 @@ export class Memory extends RoomMatch<GameState> {
 
 		this.mutateBoard(playerId, x, y, "function", card.shape);
 
+		const positions: { x: number; y: number }[] = [];
+		for (let dy = 0; dy < card.shape.length; dy++) {
+			for (let dx = 0; dx < card.shape[dy].length; dx++) {
+				if (card.shape[dy][dx] === 1) {
+					positions.push({ x: x + dx, y: y + dy });
+				}
+			}
+		}
+
+		this.state.lastAction = {
+			playerId,
+			type: "execFunction",
+			positions,
+			cardCost: card.cost,
+			timestamp: Date.now(),
+		};
+
 		// Consume use-after-free effect if it was used
 		if (this.state.activeEffects[playerId]?.useAfterFree) {
 			// Clear use-after-free effect after use
@@ -646,12 +700,6 @@ export class Memory extends RoomMatch<GameState> {
 		}
 		this.state.points[playerId] += pointsToAdd;
 
-		this.state.timeLimitUnix = Date.now() + this.state.rules.timeLimit * 1000;
-		clearTimeout(this.state.timeoutId);
-		this.state.timeoutId = setTimeout(() => {
-			this.pass();
-		}, this.state.rules.timeLimit * 1000);
-
 		await this.ctx.storage.put("gameState", this.state);
 		this.broadcast({ type: "state", payload: this.state });
 	}
@@ -659,8 +707,9 @@ export class Memory extends RoomMatch<GameState> {
 	async buyEventCard(playerId: string) {
 		if (!this.state) throw new Error("Game state is not initialized");
 
-		const cost = 3; // TODO: 調整可能にする
+		const cost = 3;
 		if (this.state.clocks[playerId] < cost) {
+			// TODO: 調整可能にする
 			console.error("Not enough clock to buy event card:", playerId);
 			return;
 		}
@@ -677,8 +726,12 @@ export class Memory extends RoomMatch<GameState> {
 		const cardInstanceId = Math.random().toString(36);
 		this.state.hands[playerId].event[cardInstanceId] = randomEventCard;
 
-		await this.ctx.storage.put("gameState", this.state);
-		this.broadcast({ type: "state", payload: this.state });
+		this.state.lastAction = {
+			playerId,
+			type: "buyEventCard",
+			eventDescription: randomEventCard.description,
+			timestamp: Date.now(),
+		};
 
 		await this.advanceTurnAndRound();
 	}
@@ -821,8 +874,12 @@ export class Memory extends RoomMatch<GameState> {
 		// Remove the used event card from hand
 		delete this.state.hands[playerId].event[eventCardId];
 
-		await this.ctx.storage.put("gameState", this.state);
-		this.broadcast({ type: "state", payload: this.state });
+		this.state.lastAction = {
+			playerId,
+			type: "execEvent",
+			eventDescription: eventCard.description,
+			timestamp: Date.now(),
+		};
 
 		await this.advanceTurnAndRound();
 	}
@@ -984,16 +1041,14 @@ export class Memory extends RoomMatch<GameState> {
 
 		this.state.clocks[playerId] += 1;
 
+		this.state.lastAction = {
+			playerId,
+			type: "garbageCollect",
+			positions: [{ x, y }],
+			timestamp: Date.now(),
+		};
+
 		this.advanceTurnAndRound();
-
-		this.state.timeLimitUnix = Date.now() + this.state.rules.timeLimit * 1000;
-		clearTimeout(this.state.timeoutId);
-		this.state.timeoutId = setTimeout(() => {
-			this.pass();
-		}, this.state.rules.timeLimit * 1000);
-
-		await this.ctx.storage.put("gameState", this.state);
-		this.broadcast({ type: "state", payload: this.state });
 	}
 
 	async redrawMemoryCard(playerId: string, memoryCardId: string) {
@@ -1016,28 +1071,27 @@ export class Memory extends RoomMatch<GameState> {
 		const { id, card: newCard } = this.drawMemoryCard();
 		this.state.hands[playerId].memory[id] = newCard;
 
+		this.state.lastAction = {
+			playerId,
+			type: "redrawMemoryCard",
+			timestamp: Date.now(),
+		};
+
 		await this.advanceTurnAndRound();
-
-		this.state.timeLimitUnix = Date.now() + this.state.rules.timeLimit * 1000;
-		clearTimeout(this.state.timeoutId);
-		this.state.timeoutId = setTimeout(() => {
-			this.pass();
-		}, this.state.rules.timeLimit * 1000);
-
-		await this.ctx.storage.put("gameState", this.state);
-		this.broadcast({ type: "state", payload: this.state });
 	}
 
 	async pass() {
 		if (!this.state) return;
+
+		const currentPlayerId =
+			this.state.players[this.state.currentPlayerIndex].id;
+		this.state.lastAction = {
+			playerId: currentPlayerId,
+			type: "pass",
+			timestamp: Date.now(),
+		};
+
 		this.advanceTurnAndRound();
-		this.state.timeLimitUnix = Date.now() + this.state.rules.timeLimit * 1000;
-		clearTimeout(this.state.timeoutId);
-		this.state.timeoutId = setTimeout(() => {
-			this.pass();
-		}, this.state.rules.timeLimit * 1000);
-		await this.ctx.storage.put("gameState", this.state);
-		this.broadcast({ type: "state", payload: this.state });
 	}
 
 	isValidMove(
