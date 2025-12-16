@@ -221,29 +221,45 @@ function Hand({
 	cards,
 	onCardClick,
 	selectedCardId,
+	currentClock,
+	isMyTurn,
+	isRedrawMode,
 }: {
 	cards: Record<string, MemoryCard>;
 	onCardClick: (i: string) => void;
 	selectedCardId: string | null;
+	currentClock: number;
+	isMyTurn: boolean;
+	isRedrawMode: boolean;
 }) {
 	return (
 		<div>
 			<div className="flex gap-2 justify-center p-2 bg-base-200 rounded-lg">
-				{Object.keys(cards).map((id) => (
-					<button
-						key={`memcard-${id}`}
-						type="button"
-						className={`card w-24 h-32 p-2 ${
-							selectedCardId === id ? "bg-accent" : "bg-primary"
-						} text-primary-content shadow-lg flex flex-col items-center cursor-pointer hover:bg-accent transition-colors duration-150`}
-						onClick={() => onCardClick(id)}
-					>
-						<span className="mt-2 text-lg font-bold mr-auto">
-							{cards[id].cost}
-						</span>
-						<Shape card={cards[id]} cellSz={20} />
-					</button>
-				))}
+				{Object.keys(cards).map((id) => {
+					const card = cards[id];
+					const canUse =
+						isRedrawMode || (isMyTurn && currentClock >= card.cost);
+					return (
+						<button
+							key={`memcard-${id}`}
+							type="button"
+							disabled={!canUse}
+							className={`card w-24 h-32 p-2 ${
+								selectedCardId === id ? "bg-accent" : "bg-primary"
+							} text-primary-content shadow-lg flex flex-col items-center transition-colors duration-150 ${
+								canUse
+									? "cursor-pointer hover:bg-accent"
+									: "opacity-50 cursor-not-allowed"
+							}`}
+							onClick={() => onCardClick(id)}
+						>
+							<span className="mt-2 text-lg font-bold mr-auto">
+								{card.cost}
+							</span>
+							<Shape card={card} cellSz={20} />
+						</button>
+					);
+				})}
 			</div>
 		</div>
 	);
@@ -254,11 +270,15 @@ function Missions({
 	cards,
 	onFuncClick,
 	selectedFuncId,
+	currentClock,
+	isMyTurn,
 }: {
 	title: string;
 	cards: Record<string, FunctionCard>;
 	onFuncClick: ((i: string) => void) | null;
 	selectedFuncId: string | null;
+	currentClock?: number;
+	isMyTurn?: boolean;
 }) {
 	return (
 		<div className="border-2 rounded-lg bg-base-200 p-2 border-secondary">
@@ -266,11 +286,24 @@ function Missions({
 			<div className="flex gap-2 justify-center">
 				{Object.keys(cards).map((id) => {
 					const card = cards[id];
+					const canUse =
+						onFuncClick !== null &&
+						isMyTurn &&
+						currentClock !== undefined &&
+						currentClock >= card.cost;
+					const isOpponentCard = onFuncClick === null;
 					return (
 						<button
 							key={id}
 							type="button"
-							className={`card w-24 h-24 p-2 ${selectedFuncId === id ? "bg-accent" : "bg-secondary"} text-primary-content shadow-lg flex flex-col items-center`}
+							disabled={!canUse}
+							className={`card w-24 h-24 p-2 ${selectedFuncId === id ? "bg-accent" : "bg-secondary"} text-primary-content shadow-lg flex flex-col items-center transition-colors duration-150 ${
+								isOpponentCard
+									? "cursor-default"
+									: canUse
+										? "cursor-pointer hover:bg-accent"
+										: "opacity-50 cursor-not-allowed"
+							}`}
 							onClick={() => {
 								if (onFuncClick) onFuncClick(id);
 							}}
@@ -290,11 +323,13 @@ function EventCards({
 	cards,
 	onEventClick,
 	selectedEventId,
+	isMyTurn,
 }: {
 	title: string;
 	cards: Record<string, EventCard>;
 	onEventClick: ((i: string) => void) | null;
 	selectedEventId: string | null;
+	isMyTurn: boolean;
 }) {
 	return (
 		<div className="border-2 rounded-lg bg-base-200 p-2 border-warning">
@@ -302,11 +337,17 @@ function EventCards({
 			<div className="flex gap-2 justify-center flex-wrap">
 				{Object.keys(cards).map((id) => {
 					const card = cards[id];
+					const canUse = isMyTurn;
 					return (
 						<button
 							key={id}
 							type="button"
-							className={`card w-32 h-20 p-2 ${selectedEventId === id ? "bg-accent" : "bg-warning"} text-warning-content shadow-lg flex flex-col cursor-pointer hover:bg-accent transition-colors duration-150`}
+							disabled={!canUse}
+							className={`card w-32 h-20 p-2 ${selectedEventId === id ? "bg-accent" : "bg-warning"} text-warning-content shadow-lg flex flex-col transition-colors duration-150 ${
+								canUse
+									? "cursor-pointer hover:bg-accent"
+									: "opacity-50 cursor-not-allowed"
+							}`}
 							onClick={() => {
 								if (onEventClick) onEventClick(id);
 							}}
@@ -1000,13 +1041,25 @@ export default function RoomPage() {
 				{opponentIds && (
 					<div className="flex justify-center gap-4 mb-4">
 						{opponentIds.map((opponent) => (
-							<Missions
-								key={opponent.id}
-								title={`${gameState?.names[opponent.id]}'s functions`}
-								cards={gameState.hands[opponent.id].func}
-								onFuncClick={null}
-								selectedFuncId={null}
-							/>
+							<div key={opponent.id} className="flex flex-col gap-2">
+								<div className="text-center font-semibold">
+									{gameState?.names[opponent.id]}
+								</div>
+								<div className="flex gap-2 justify-center text-sm">
+									<div className="bg-primary text-primary-content px-2 py-1 rounded">
+										Clock: {gameState.clocks[opponent.id] || 0}
+									</div>
+									<div className="bg-secondary text-secondary-content px-2 py-1 rounded">
+										Points: {gameState.points[opponent.id] || 0}
+									</div>
+								</div>
+								<Missions
+									title="functions"
+									cards={gameState.hands[opponent.id].func}
+									onFuncClick={null}
+									selectedFuncId={null}
+								/>
+							</div>
 						))}
 					</div>
 				)}
@@ -1042,6 +1095,8 @@ export default function RoomPage() {
 								setSelectedEventId(null);
 							}}
 							selectedFuncId={selectedFuncId}
+							currentClock={gameState.clocks[user.id]}
+							isMyTurn={currentPlayer.id === user.id}
 						/>
 					)}
 					{gameState.hands[user.id].event &&
@@ -1055,6 +1110,7 @@ export default function RoomPage() {
 									setSelectedFuncId(null);
 								}}
 								selectedEventId={selectedEventId}
+								isMyTurn={currentPlayer.id === user.id}
 							/>
 						)}
 					<div className="flex flex-row items-end gap-4">
@@ -1072,13 +1128,16 @@ export default function RoomPage() {
 									}
 								}}
 								selectedCardId={selectedCardId}
+								currentClock={gameState.clocks[user.id]}
+								isMyTurn={currentPlayer.id === user.id}
+								isRedrawMode={isRedrawMode}
 							/>
 						)}
 						<div className="flex flex-col items-center gap-2">
 							<button
 								type="button"
 								disabled={currentPlayer.id !== user.id}
-								className={`btn ${isGCMode ? "btn-accent" : "btn-secondary"} hover:btn-accent`}
+								className={`btn ${isGCMode ? "btn-accent" : "btn-secondary"} hover:btn-accent disabled:opacity-50 disabled:cursor-not-allowed`}
 								onClick={() => {
 									setIsGCMode(!isGCMode);
 									setIsRedrawMode(false);
@@ -1092,7 +1151,7 @@ export default function RoomPage() {
 							<button
 								type="button"
 								disabled={currentPlayer.id !== user.id}
-								className={`btn ${isRedrawMode ? "btn-accent" : "btn-warning"} hover:btn-accent`}
+								className={`btn ${isRedrawMode ? "btn-accent" : "btn-warning"} hover:btn-accent disabled:opacity-50 disabled:cursor-not-allowed`}
 								onClick={() => {
 									setIsRedrawMode(!isRedrawMode);
 									setIsGCMode(false);
@@ -1108,7 +1167,7 @@ export default function RoomPage() {
 								disabled={
 									currentPlayer.id !== user.id || gameState.clocks[user.id] < 3
 								}
-								className="btn btn-warning hover:btn-warning-focus"
+								className="btn btn-warning hover:btn-warning-focus disabled:opacity-50 disabled:cursor-not-allowed"
 								onClick={handleBuyEventCard}
 							>
 								Buy Event Card (3 clock)
@@ -1116,7 +1175,7 @@ export default function RoomPage() {
 							<button
 								type="button"
 								disabled={currentPlayer.id !== user.id}
-								className="btn btn-primary hover:btn-accent"
+								className="btn btn-primary hover:btn-accent disabled:opacity-50 disabled:cursor-not-allowed"
 								onClick={() => {
 									sendWsMessage({ type: "pass" });
 								}}
