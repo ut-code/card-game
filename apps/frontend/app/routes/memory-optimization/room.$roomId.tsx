@@ -240,7 +240,7 @@ function Hand({
 						<span className="mt-2 text-lg font-bold mr-auto">
 							{cards[id].cost}
 						</span>
-						<Shape card={cards[id]} cellSz={5} />
+						<Shape card={cards[id]} cellSz={20} />
 					</button>
 				))}
 			</div>
