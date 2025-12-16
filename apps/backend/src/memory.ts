@@ -29,6 +29,10 @@ type GarbageCollectAction = {
 	y: number;
 };
 
+type RedrawMemoryAction = {
+	memoryCardId: string;
+};
+
 export type Rule =
 	| { rule: "boardSize"; state: number }
 	| { rule: "timeLimit"; state: number };
@@ -147,6 +151,7 @@ export type MessageType =
 	| { type: "execFunction"; payload: ExecFunctionAction }
 	| { type: "execEvent"; payload: ExecEventAction }
 	| { type: "garbageCollect"; payload: GarbageCollectAction }
+	| { type: "redrawMemoryCard"; payload: RedrawMemoryAction }
 	| { type: "buyEventCard"; payload?: undefined }
 	| { type: "setReady"; payload?: undefined }
 	| { type: "cancelReady"; payload?: undefined }
@@ -196,7 +201,8 @@ export class Memory extends RoomMatch<GameState> {
 				(type === "reserveMemory" ||
 					type === "execFunction" ||
 					type === "execEvent" ||
-					type === "buyEventCard")
+					type === "buyEventCard" ||
+					type === "redrawMemoryCard")
 			) {
 				console.log("Player is frozen and cannot perform actions:", playerId);
 				return;
@@ -231,6 +237,9 @@ export class Memory extends RoomMatch<GameState> {
 					break;
 				case "garbageCollect":
 					await this.garbageCollect(playerId, payload.x, payload.y);
+					break;
+				case "redrawMemoryCard":
+					await this.redrawMemoryCard(playerId, payload.memoryCardId);
 					break;
 				case "buyEventCard":
 					await this.buyEventCard(playerId);
@@ -670,6 +679,8 @@ export class Memory extends RoomMatch<GameState> {
 
 		await this.ctx.storage.put("gameState", this.state);
 		this.broadcast({ type: "state", payload: this.state });
+
+		await this.advanceTurnAndRound();
 	}
 
 	async execEvent(
@@ -812,6 +823,8 @@ export class Memory extends RoomMatch<GameState> {
 
 		await this.ctx.storage.put("gameState", this.state);
 		this.broadcast({ type: "state", payload: this.state });
+
+		await this.advanceTurnAndRound();
 	}
 
 	private getAreaCoordinates(
@@ -972,6 +985,38 @@ export class Memory extends RoomMatch<GameState> {
 		this.state.clocks[playerId] += 1;
 
 		this.advanceTurnAndRound();
+
+		this.state.timeLimitUnix = Date.now() + this.state.rules.timeLimit * 1000;
+		clearTimeout(this.state.timeoutId);
+		this.state.timeoutId = setTimeout(() => {
+			this.pass();
+		}, this.state.rules.timeLimit * 1000);
+
+		await this.ctx.storage.put("gameState", this.state);
+		this.broadcast({ type: "state", payload: this.state });
+	}
+
+	async redrawMemoryCard(playerId: string, memoryCardId: string) {
+		if (!this.state) throw new Error("Game state is not initialized");
+
+		const currentPlayerId =
+			this.state.players[this.state.currentPlayerIndex].id;
+		if (currentPlayerId !== playerId) {
+			console.error("Not your turn:", playerId);
+			return;
+		}
+
+		const cardInstance = this.state.hands[playerId]?.memory[memoryCardId];
+		if (!cardInstance) {
+			console.error("Card instance not found in hand:", memoryCardId);
+			return;
+		}
+
+		delete this.state.hands[playerId].memory[memoryCardId];
+		const { id, card: newCard } = this.drawMemoryCard();
+		this.state.hands[playerId].memory[id] = newCard;
+
+		await this.advanceTurnAndRound();
 
 		this.state.timeLimitUnix = Date.now() + this.state.rules.timeLimit * 1000;
 		clearTimeout(this.state.timeoutId);

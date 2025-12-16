@@ -62,7 +62,7 @@ export const functionCards: Record<
 			[1, 1, 1],
 			[1, 1, 0],
 		],
-		cost: 4,
+		cost: 5,
 	},
 	fc2: {
 		shape: [
@@ -71,6 +71,135 @@ export const functionCards: Record<
 			[1, 0],
 		],
 		cost: 5,
+	},
+	fc3: {
+		shape: [
+			[1, 1],
+			[1, 1],
+			[1, 1],
+		],
+		cost: 6,
+	},
+	fc4: {
+		shape: [
+			[1, 1, 1],
+			[0, 1, 1],
+		],
+		cost: 4,
+	},
+	fc5: {
+		shape: [
+			[1, 1, 1],
+			[0, 1, 0],
+		],
+		cost: 4,
+	},
+	fc6: {
+		shape: [
+			[1, 1, 1],
+			[0, 1, 0],
+			[0, 1, 0],
+		],
+		cost: 5,
+	},
+	fc7: {
+		shape: [
+			[1, 1, 1],
+			[1, 0, 0],
+			[1, 0, 0],
+		],
+		cost: 5,
+	},
+	fc8: {
+		shape: [[1, 1, 1, 1]],
+		cost: 4,
+	},
+	fc9: {
+		shape: [
+			[1, 0, 0],
+			[1, 1, 1],
+		],
+		cost: 4,
+	},
+	fc10: {
+		shape: [
+			[0, 1, 1],
+			[1, 1, 0],
+		],
+		cost: 4,
+	},
+	fc11: {
+		shape: [
+			[1, 1, 0],
+			[0, 1, 1],
+		],
+		cost: 4,
+	},
+	fc12: {
+		shape: [
+			[0, 1, 0],
+			[1, 1, 1],
+		],
+		cost: 4,
+	},
+	fc13: {
+		shape: [
+			[1, 0],
+			[1, 1],
+			[0, 1],
+		],
+		cost: 4,
+	},
+	fc14: {
+		shape: [
+			[1, 1, 1],
+			[1, 0, 1],
+		],
+		cost: 5,
+	},
+	fc15: {
+		shape: [
+			[1, 1],
+			[1, 0],
+			[1, 1],
+		],
+		cost: 5,
+	},
+	fc16: {
+		shape: [
+			[1, 1, 1, 1],
+			[1, 0, 0, 0],
+		],
+		cost: 5,
+	},
+	fc17: {
+		shape: [
+			[1, 1, 1, 1],
+			[0, 1, 0, 0],
+		],
+		cost: 5,
+	},
+	fc18: {
+		shape: [
+			[1, 1, 1, 1],
+			[0, 0, 1, 0],
+		],
+		cost: 5,
+	},
+	fc19: {
+		shape: [
+			[0, 0, 1],
+			[1, 1, 1],
+			[1, 0, 0],
+		],
+		cost: 5,
+	},
+	fc20: {
+		shape: [
+			[1, 1, 1],
+			[1, 1, 1],
+		],
+		cost: 6,
 	},
 };
 
@@ -103,10 +232,10 @@ export const eventCards: Record<
 		description: "周辺エリアのメモリを破壊して解放",
 		effect: { type: "destroy-memory", area: "peripheral" },
 	},
-	ec_free_any_one: {
-		description: "指定した1×1の使用済みメモリを解放",
-		effect: { type: "free-memory", area: "any-one" },
-	},
+	// ec_free_any_one: {
+	// 	description: "指定した1×1の使用済みメモリを解放",
+	// 	effect: { type: "free-memory", area: "any-one" },
+	// },
 	ec_free_any_2by2: {
 		description: "指定した2×2エリアの使用済みメモリを解放",
 		effect: { type: "free-memory", area: "any-2by2" },

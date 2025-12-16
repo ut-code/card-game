@@ -391,6 +391,7 @@ export default function RoomPage() {
 	const [selectedFuncId, setSelectedFuncId] = useState<string | null>(null);
 	const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 	const [isGCMode, setIsGCMode] = useState(false);
+	const [isRedrawMode, setIsRedrawMode] = useState(false);
 
 	// const [winnerDisplay, setWinnerDisplay] = useState(0);
 	const [remainingTime, setRemainingTime] = useState(0);
@@ -555,6 +556,10 @@ export default function RoomPage() {
 
 	const handleGarbageCollect = (x: number, y: number) => {
 		sendWsMessage({ type: "garbageCollect", payload: { x, y } });
+	};
+
+	const handleRedrawMemoryCard = (memoryCardId: string) => {
+		sendWsMessage({ type: "redrawMemoryCard", payload: { memoryCardId } });
 	};
 
 	// --- Render Logic ---
@@ -1019,7 +1024,7 @@ export default function RoomPage() {
 						onCellClick={handleCellClick}
 						colors={gameState.colors}
 						cardShape={
-							selectedCardId
+							selectedCardId && gameState.hands[user.id].memory[selectedCardId]
 								? gameState.hands[user.id].memory[selectedCardId].shape
 								: null
 						}
@@ -1057,9 +1062,14 @@ export default function RoomPage() {
 							<Hand
 								cards={gameState.hands[user.id].memory}
 								onCardClick={(i: string) => {
-									setSelectedCardId(i);
-									setSelectedFuncId(null);
-									setSelectedEventId(null);
+									if (isRedrawMode) {
+										handleRedrawMemoryCard(i);
+										setIsRedrawMode(false);
+									} else {
+										setSelectedCardId(i);
+										setSelectedFuncId(null);
+										setSelectedEventId(null);
+									}
 								}}
 								selectedCardId={selectedCardId}
 							/>
@@ -1071,12 +1081,27 @@ export default function RoomPage() {
 								className={`btn ${isGCMode ? "btn-accent" : "btn-secondary"} hover:btn-accent`}
 								onClick={() => {
 									setIsGCMode(!isGCMode);
+									setIsRedrawMode(false);
 									setSelectedCardId(null);
 									setSelectedFuncId(null);
 									setSelectedEventId(null);
 								}}
 							>
 								Garbage Collection
+							</button>
+							<button
+								type="button"
+								disabled={currentPlayer.id !== user.id}
+								className={`btn ${isRedrawMode ? "btn-accent" : "btn-warning"} hover:btn-accent`}
+								onClick={() => {
+									setIsRedrawMode(!isRedrawMode);
+									setIsGCMode(false);
+									setSelectedCardId(null);
+									setSelectedFuncId(null);
+									setSelectedEventId(null);
+								}}
+							>
+								Redraw
 							</button>
 							<button
 								type="button"
