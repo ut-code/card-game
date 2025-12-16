@@ -57,11 +57,13 @@ function GameBoard({
 	board,
 	onCellClick,
 	colors,
+	myId,
 	cardShape,
 }: {
 	board: CellState[][];
 	onCellClick: (x: number, y: number) => void;
 	colors: { [playerId: string]: string };
+	myId: string;
 	cardShape: (0 | 1)[][] | null;
 }) {
 	const size = board.length;
@@ -112,12 +114,16 @@ function GameBoard({
 										}
 										const newY = y - originY + dy;
 										const newX = x + dx;
+										const cell = board[newY][newX];
 										if (
 											newY < 0 ||
 											newY >= size ||
 											newX < 0 ||
 											newX >= size ||
-											board[newY][newX].status !== "free"
+											!(
+												cell.status === "free" ||
+												(cell.status === "reserved" && cell.occupiedBy === myId)
+											)
 										) {
 											newBoardForShading = Array(size)
 												.fill(null)
@@ -1076,6 +1082,7 @@ export default function RoomPage() {
 						board={gameState.board}
 						onCellClick={handleCellClick}
 						colors={gameState.colors}
+						myId={user.id}
 						cardShape={
 							selectedCardId && gameState.hands[user.id].memory[selectedCardId]
 								? gameState.hands[user.id].memory[selectedCardId].shape

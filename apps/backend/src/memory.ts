@@ -1114,7 +1114,14 @@ export class Memory extends RoomMatch<GameState> {
 					for (let dx = 0; dx < cardWidth; dx++) {
 						if (card.shape[dy][dx] === 1) {
 							const boardCell = this.state.board[y + dy][x + dx];
-							if (!boardCell || boardCell.status !== "free") {
+							if (
+								!boardCell ||
+								!(
+									boardCell.status === "free" ||
+									(boardCell.status === "reserved" &&
+										boardCell.occupiedBy === player)
+								)
+							) {
 								console.error("Cell already used:", x + dx, y + dy);
 								return false;
 							}
