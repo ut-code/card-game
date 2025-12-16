@@ -69,7 +69,6 @@ export class Matching extends DurableObject<Env> {
 	async handleSession(ws: WebSocket, playerId: string) {
 		const session: Session = { ws, playerId };
 		this.sessions.push(session);
-
 		ws.accept();
 
 		await this.addUser(playerId);
@@ -115,6 +114,7 @@ export class Matching extends DurableObject<Env> {
 							gameTitle: "magic-square",
 							hostId: matchedUsers[0],
 							users: matchedUsers,
+							roomType: "random",
 						})
 						.returning();
 
@@ -138,8 +138,6 @@ export class Matching extends DurableObject<Env> {
 					.forEach((s) => s.ws.send(message));
 			} catch (error) {
 				console.error("Failed to create room:", error);
-				// 失敗した場合、ユーザーを待機リストに戻すか、エラーを通知する
-				// ここではシンプルにエラーをログに出力するだけに留めます
 			}
 		}
 	}

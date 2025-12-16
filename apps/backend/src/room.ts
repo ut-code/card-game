@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { stat } from "fs";
 import type { Env } from "hono/types";
 
 export type RoomStatus = "preparing" | "playing" | "paused";
@@ -44,6 +45,7 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 		const url = new URL(request.url);
 		const playerId = url.searchParams.get("playerId");
 		const playerName = url.searchParams.get("playerName");
+		const roomType = url.searchParams.get("roomType");
 		if (!playerId || !playerName) {
 			return new Response("playerId and playerName are required", {
 				status: 400,
@@ -59,7 +61,7 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 		}
 
 		const { 0: client, 1: server } = new WebSocketPair();
-		await this.handleSession(server, playerId, playerName);
+		await this.handleSession(server, playerId, playerName, roomType);
 
 		return new Response(null, {
 			status: 101,
@@ -67,12 +69,17 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 		});
 	}
 
-	async handleSession(ws: WebSocket, playerId: string, playerName: string) {
+	async handleSession(
+		ws: WebSocket,
+		playerId: string,
+		playerName: string,
+		roomType: string | null,
+	) {
 		const session: Session = { ws, playerId };
 		this.sessions.push(session);
 		ws.accept();
 
-		await this.addPlayer(playerId, playerName);
+		await this.addPlayer(playerId, playerName, roomType);
 
 		ws.addEventListener("message", async (msg) => {
 			this.wsMessageListener(ws, msg, playerId);
@@ -101,7 +108,11 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 
 	// --- Room Management Methods ---
 
-	async addPlayer(playerId: string, playerName: string) {
+	async addPlayer(
+		playerId: string,
+		playerName: string,
+		roomType: string | null,
+	) {
 		if (!this.state) return;
 
 		// New player
@@ -110,10 +121,12 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 				case "preparing":
 					this.state.players.push(playerId);
 					this.state.names[playerId] = playerName;
-					this.state.playerStatus[playerId] = "preparing";
+					this.state.playerStatus[playerId] = roomType ? "ready" : "preparing";
 
 					await this.ctx.storage.put("gameState", this.state);
-					this.broadcast({ type: "state", payload: this.state });
+					if (roomType === "random" && this.state.players.length === 2) {
+						this.startGame();
+					}
 					break;
 				case "playing":
 					if (!this.state.players.includes(playerId)) {

@@ -24,6 +24,7 @@ export const rooms = pgTable("Room", {
 	hostId: text("hostId")
 		.notNull()
 		.references(() => users.id),
+	roomType: text("roomType").notNull(),
 });
 
 export const roomSecrets = pgTable("RoomSecret", {

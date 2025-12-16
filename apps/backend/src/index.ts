@@ -180,6 +180,7 @@ const apiApp = new Hono<{
 				gameTitle: gameTitle,
 				hostId: user.id,
 				users: [user.id],
+				roomType: "room",
 			})
 			.returning();
 
@@ -321,6 +322,7 @@ const apiApp = new Hono<{
 
 				const url = new URL(c.req.url);
 				url.searchParams.set("playerId", user.id);
+				url.searchParams.set("roomType", room.roomType);
 
 				const request = new Request(url.toString(), c.req.raw);
 				return stub.fetch(request);
