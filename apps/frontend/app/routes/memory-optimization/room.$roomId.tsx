@@ -385,6 +385,48 @@ function EventCards({
 	);
 }
 
+function AvailableEventCards({
+	availableCards,
+	onCardSelect,
+	selectedIndex,
+	isMyTurn,
+	currentClock,
+}: {
+	availableCards: EventCard[];
+	onCardSelect: (index: number) => void;
+	selectedIndex: number | null;
+	isMyTurn: boolean;
+	currentClock: number;
+}) {
+	const canSelect = isMyTurn && currentClock >= 3;
+	return (
+		<div className="border-2 rounded-lg bg-base-200 p-2 border-warning mb-2">
+			<div className="text-warning font-semibold">
+				Available Event Cards (3 clock)
+			</div>
+			<div className="flex gap-2 justify-center flex-wrap">
+				{availableCards.map((card, index) => (
+					<button
+						key={index}
+						type="button"
+						disabled={!canSelect}
+						className={`card w-32 h-20 p-2 ${selectedIndex === index ? "bg-accent" : "bg-warning"} text-warning-content shadow-lg flex flex-col transition-colors duration-150 ${
+							canSelect
+								? "cursor-pointer hover:bg-accent"
+								: "opacity-50 cursor-not-allowed"
+						}`}
+						onClick={() => onCardSelect(index)}
+					>
+						<div className="text-xs font-bold overflow-hidden text-ellipsis">
+							{card.description}
+						</div>
+					</button>
+				))}
+			</div>
+		</div>
+	);
+}
+
 // --- Main Page Component ---
 
 function LastActionBanner({
@@ -509,6 +551,8 @@ export default function RoomPage() {
 	const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
 	const [selectedFuncId, setSelectedFuncId] = useState<string | null>(null);
 	const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+	const [selectedAvailableEventIndex, setSelectedAvailableEventIndex] =
+		useState<number | null>(null);
 	const [isGCMode, setIsGCMode] = useState(false);
 	const [isRedrawMode, setIsRedrawMode] = useState(false);
 	const [highlightedCells, setHighlightedCells] = useState<
@@ -682,8 +726,22 @@ export default function RoomPage() {
 		navigate("/memory-optimization");
 	};
 
+	const handleSelectAvailableEvent = (index: number) => {
+		setSelectedAvailableEventIndex(index);
+		setSelectedCardId(null);
+		setSelectedFuncId(null);
+		setSelectedEventId(null);
+		setIsGCMode(false);
+		setIsRedrawMode(false);
+	};
+
 	const handleBuyEventCard = () => {
-		sendWsMessage({ type: "buyEventCard" });
+		if (selectedAvailableEventIndex === null) return;
+		sendWsMessage({
+			type: "buyEventCard",
+			payload: { eventCardIndex: selectedAvailableEventIndex },
+		});
+		setSelectedAvailableEventIndex(null);
 	};
 
 	const handleGarbageCollect = (x: number, y: number) => {
@@ -1152,6 +1210,10 @@ export default function RoomPage() {
 									<div className="bg-secondary text-secondary-content px-2 py-1 rounded">
 										Points: {gameState.points[opponent.id] || 0}
 									</div>
+									<div className="bg-warning text-warning-content px-2 py-1 rounded">
+										Events:{" "}
+										{Object.keys(gameState.hands[opponent.id].event).length}
+									</div>
 								</div>
 								<Missions
 									title="functions"
@@ -1176,6 +1238,13 @@ export default function RoomPage() {
 					<LastActionBanner
 						lastAction={gameState.lastAction}
 						playerNames={gameState.names}
+					/>
+					<AvailableEventCards
+						availableCards={gameState.availableEventCards}
+						onCardSelect={handleSelectAvailableEvent}
+						selectedIndex={selectedAvailableEventIndex}
+						isMyTurn={currentPlayer.id === user.id}
+						currentClock={gameState.clocks[user.id]}
 					/>
 					<GameBoard
 						board={gameState.board}
@@ -1284,7 +1353,9 @@ export default function RoomPage() {
 							<button
 								type="button"
 								disabled={
-									currentPlayer.id !== user.id || gameState.clocks[user.id] < 3
+									currentPlayer.id !== user.id ||
+									gameState.clocks[user.id] < 3 ||
+									selectedAvailableEventIndex === null
 								}
 								className="btn btn-warning hover:btn-warning-focus disabled:opacity-50 disabled:cursor-not-allowed"
 								onClick={handleBuyEventCard}

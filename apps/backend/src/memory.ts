@@ -162,6 +162,7 @@ export type GameState = RoomState & {
 		};
 	};
 	lastAction?: LastAction;
+	availableEventCards: EventCard[];
 };
 
 // Combined message types for both room and game actions
@@ -171,7 +172,7 @@ export type MessageType =
 	| { type: "execEvent"; payload: ExecEventAction }
 	| { type: "garbageCollect"; payload: GarbageCollectAction }
 	| { type: "redrawMemoryCard"; payload: RedrawMemoryAction }
-	| { type: "buyEventCard"; payload?: undefined }
+	| { type: "buyEventCard"; payload: { eventCardIndex: number } }
 	| { type: "setReady"; payload?: undefined }
 	| { type: "cancelReady"; payload?: undefined }
 	| { type: "changeRule"; payload: Rule }
@@ -261,7 +262,7 @@ export class Memory extends RoomMatch<GameState> {
 					await this.redrawMemoryCard(playerId, payload.memoryCardId);
 					break;
 				case "buyEventCard":
-					await this.buyEventCard(playerId);
+					await this.buyEventCard(playerId, payload.eventCardIndex);
 					break;
 				case "pass":
 					await this.pass();
@@ -315,6 +316,7 @@ export class Memory extends RoomMatch<GameState> {
 			colors: {},
 			timeLimitUnix: Date.now() + DEFAULT_TIME_LIMIT_MS,
 			activeEffects: {},
+			availableEventCards: this.drawEventCards(3),
 		};
 		await this.ctx.storage.put("gameState", this.state);
 		this.broadcast({ type: "state", payload: this.state });
@@ -348,6 +350,7 @@ export class Memory extends RoomMatch<GameState> {
 		this.state.hands = {};
 		this.state.clocks = {};
 		this.state.points = {};
+		this.state.availableEventCards = this.drawEventCards(3);
 
 		// for (let i = 0; i < this.state.rules.cpu; i++) {
 		// 	const cpuId = `cpu-${i + 1}-${crypto.randomUUID()}`;
@@ -459,6 +462,30 @@ export class Memory extends RoomMatch<GameState> {
 			id: Math.random().toString(36),
 			card: { definitionId: randomKey, ...functionCards[randomKey] },
 		};
+	}
+
+	drawEventCards(count: number): EventCard[] {
+		const keys = Object.keys(eventCards);
+		const result: EventCard[] = [];
+		const usedTypes = new Set<string>();
+
+		for (let i = 0; i < count; i++) {
+			const availableKeys = keys.filter(
+				(key) => !usedTypes.has(eventCards[key].effect.type),
+			);
+			if (availableKeys.length === 0) {
+				break;
+			}
+			const randomKey = availableKeys[
+				Math.floor(Math.random() * availableKeys.length)
+			] as EventCard["definitionId"];
+			usedTypes.add(eventCards[randomKey].effect.type);
+			result.push({
+				definitionId: randomKey,
+				...eventCards[randomKey],
+			});
+		}
+		return result;
 	}
 
 	async advanceTurnAndRound() {
@@ -718,32 +745,36 @@ export class Memory extends RoomMatch<GameState> {
 		this.broadcast({ type: "state", payload: this.state });
 	}
 
-	async buyEventCard(playerId: string) {
+	async buyEventCard(playerId: string, eventCardIndex: number) {
 		if (!this.state) throw new Error("Game state is not initialized");
 
 		const cost = 3;
 		if (this.state.clocks[playerId] < cost) {
-			// TODO: 調整可能にする
 			console.error("Not enough clock to buy event card:", playerId);
+			return;
+		}
+
+		if (
+			eventCardIndex < 0 ||
+			eventCardIndex >= this.state.availableEventCards.length
+		) {
+			console.error("Invalid event card index:", eventCardIndex);
 			return;
 		}
 
 		this.state.clocks[playerId] -= cost;
 
-		const keys = Object.keys(eventCards);
-		const randomKey = keys[Math.floor(Math.random() * keys.length)];
-		const randomEventCard: EventCard = {
-			definitionId: randomKey,
-			...eventCards[randomKey],
-		};
+		const selectedEventCard = this.state.availableEventCards[eventCardIndex];
 
 		const cardInstanceId = Math.random().toString(36);
-		this.state.hands[playerId].event[cardInstanceId] = randomEventCard;
+		this.state.hands[playerId].event[cardInstanceId] = selectedEventCard;
+
+		this.state.availableEventCards = this.drawEventCards(3);
 
 		this.state.lastAction = {
 			playerId,
 			type: "buyEventCard",
-			eventDescription: randomEventCard.description,
+			eventDescription: selectedEventCard.description,
 			timestamp: Date.now(),
 		};
 
