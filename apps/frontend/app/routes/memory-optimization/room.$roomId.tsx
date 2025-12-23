@@ -240,6 +240,7 @@ function Hand({
 	currentClock,
 	isMyTurn,
 	isRedrawMode,
+	fastMode,
 }: {
 	cards: Record<string, MemoryCard>;
 	onCardClick: (i: string) => void;
@@ -247,14 +248,16 @@ function Hand({
 	currentClock: number;
 	isMyTurn: boolean;
 	isRedrawMode: boolean;
+	fastMode: boolean;
 }) {
 	return (
 		<div>
 			<div className="flex gap-2 justify-center p-2 bg-base-200 rounded-lg">
 				{Object.keys(cards).map((id) => {
 					const card = cards[id];
+					const effectiveCost = fastMode ? Math.ceil(card.cost / 2) : card.cost;
 					const canUse =
-						isRedrawMode || (isMyTurn && currentClock >= card.cost);
+						isRedrawMode || (isMyTurn && currentClock >= effectiveCost);
 					return (
 						<button
 							key={`memcard-${id}`}
@@ -270,7 +273,7 @@ function Hand({
 							onClick={() => onCardClick(id)}
 						>
 							<span className="mt-2 text-lg font-bold mr-auto">
-								{card.cost}
+								{effectiveCost}
 							</span>
 							<Shape card={card} cellSz={20} />
 						</button>
@@ -288,6 +291,7 @@ function Missions({
 	selectedFuncId,
 	currentClock,
 	isMyTurn,
+	fastMode,
 }: {
 	title: string;
 	cards: Record<string, FunctionCard>;
@@ -295,6 +299,7 @@ function Missions({
 	selectedFuncId: string | null;
 	currentClock?: number;
 	isMyTurn?: boolean;
+	fastMode: boolean;
 }) {
 	return (
 		<div className="border-2 rounded-lg bg-base-200 p-2 border-secondary">
@@ -302,11 +307,12 @@ function Missions({
 			<div className="flex gap-2 justify-center">
 				{Object.keys(cards).map((id) => {
 					const card = cards[id];
+					const effectiveCost = fastMode ? Math.ceil(card.cost / 2) : card.cost;
 					const canUse =
 						onFuncClick !== null &&
 						isMyTurn &&
 						currentClock !== undefined &&
-						currentClock >= card.cost;
+						currentClock >= effectiveCost;
 					const isOpponentCard = onFuncClick === null;
 					return (
 						<button
@@ -324,7 +330,7 @@ function Missions({
 								if (onFuncClick) onFuncClick(id);
 							}}
 						>
-							<span className="font-bold mr-auto">{card.cost}</span>
+							<span className="font-bold mr-auto">{effectiveCost}</span>
 							<Shape card={card} cellSz={16} />
 						</button>
 					);
@@ -897,6 +903,23 @@ export default function RoomPage() {
 						</select>
 					</label>
 				</div>
+				<div className="form-control">
+					<label className="label cursor-pointer">
+						<span className="label-text">Fast Mode (Cost ÷ 2)</span>
+						<input
+							type="checkbox"
+							className="toggle toggle-primary"
+							checked={gameState.rules.fastMode}
+							disabled={user.id !== roomHost}
+							onChange={(e) =>
+								handleRuleChange({
+									rule: "fastMode",
+									state: e.target.checked,
+								})
+							}
+						/>
+					</label>
+				</div>
 				{/* <div className="form-control">
 					<label className="label cursor-pointer">
 						<span className="label-text">Disable negative numbers</span>
@@ -1135,6 +1158,7 @@ export default function RoomPage() {
 									cards={gameState.hands[opponent.id].func}
 									onFuncClick={null}
 									selectedFuncId={null}
+									fastMode={gameState.rules.fastMode}
 								/>
 							</div>
 						))}
@@ -1180,6 +1204,7 @@ export default function RoomPage() {
 							selectedFuncId={selectedFuncId}
 							currentClock={gameState.clocks[user.id]}
 							isMyTurn={currentPlayer.id === user.id}
+							fastMode={gameState.rules.fastMode}
 						/>
 					)}
 					{gameState.hands[user.id].event &&
@@ -1223,6 +1248,7 @@ export default function RoomPage() {
 									currentClock={gameState.clocks[user.id]}
 									isMyTurn={currentPlayer.id === user.id}
 									isRedrawMode={isRedrawMode}
+									fastMode={gameState.rules.fastMode}
 								/>
 							)}
 						</div>
