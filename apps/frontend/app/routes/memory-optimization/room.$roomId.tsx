@@ -1034,14 +1034,6 @@ export default function RoomPage() {
 			<div className="p-4 md:p-8 flex flex-col gap-4">
 				<div className="flex justify-between items-center mb-4">
 					<div className="font-semibold">Password: {roomSecret}</div>
-					<div className="flex gap-4 text-sm">
-						<div className="bg-primary text-primary-content px-3 py-1 rounded">
-							Clock: {gameState.clocks[user.id] || 0}
-						</div>
-						<div className="bg-secondary text-secondary-content px-3 py-1 rounded">
-							Points: {gameState.points[user.id] || 0}
-						</div>
-					</div>
 				</div>
 				{/* Opponent's Info */}
 				{opponentIds && (
@@ -1121,25 +1113,35 @@ export default function RoomPage() {
 							/>
 						)}
 					<div className="flex flex-row items-end gap-4">
-						{gameState.hands[user.id] && (
-							<Hand
-								cards={gameState.hands[user.id].memory}
-								onCardClick={(i: string) => {
-									if (isRedrawMode) {
-										handleRedrawMemoryCard(i);
-										setIsRedrawMode(false);
-									} else {
-										setSelectedCardId(i);
-										setSelectedFuncId(null);
-										setSelectedEventId(null);
-									}
-								}}
-								selectedCardId={selectedCardId}
-								currentClock={gameState.clocks[user.id]}
-								isMyTurn={currentPlayer.id === user.id}
-								isRedrawMode={isRedrawMode}
-							/>
-						)}
+						<div className="flex flex-col gap-4">
+							<div className="flex gap-4 text-sm">
+								<div className="bg-primary text-primary-content px-3 py-1 rounded">
+									Clock: {gameState.clocks[user.id] || 0}
+								</div>
+								<div className="bg-secondary text-secondary-content px-3 py-1 rounded">
+									Points: {gameState.points[user.id] || 0}
+								</div>
+							</div>
+							{gameState.hands[user.id] && (
+								<Hand
+									cards={gameState.hands[user.id].memory}
+									onCardClick={(i: string) => {
+										if (isRedrawMode) {
+											handleRedrawMemoryCard(i);
+											setIsRedrawMode(false);
+										} else {
+											setSelectedCardId(i);
+											setSelectedFuncId(null);
+											setSelectedEventId(null);
+										}
+									}}
+									selectedCardId={selectedCardId}
+									currentClock={gameState.clocks[user.id]}
+									isMyTurn={currentPlayer.id === user.id}
+									isRedrawMode={isRedrawMode}
+								/>
+							)}
+						</div>
 						<div className="flex flex-col items-center gap-2">
 							<button
 								type="button"
