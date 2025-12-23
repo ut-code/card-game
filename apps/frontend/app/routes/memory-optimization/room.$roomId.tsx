@@ -77,7 +77,7 @@ function GameBoard({
 	);
 	return (
 		<div
-			className="aspect-square bg-base-300 grid gap-2 p-2 rounded-lg shadow-inner max-w-2xs mx-auto"
+			className="aspect-square bg-base-300 grid gap-[1%] p-2 rounded-lg shadow-inner mx-auto"
 			style={{ gridTemplateColumns: `repeat(${board.length}, 1fr)` }}
 		>
 			{board.map((row, y) =>
@@ -149,7 +149,7 @@ function GameBoard({
 						>
 							{cell.status === "reserved" && (
 								<div
-									className="w-6 h-6 rounded-3xl"
+									className="w-2/3 h-2/3 rounded-full"
 									style={{ backgroundColor: colors[cell.occupiedBy] }}
 								/>
 							)}
