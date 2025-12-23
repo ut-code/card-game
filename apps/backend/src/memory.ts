@@ -35,7 +35,8 @@ type RedrawMemoryAction = {
 
 export type Rule =
 	| { rule: "boardSize"; state: number }
-	| { rule: "timeLimit"; state: number };
+	| { rule: "timeLimit"; state: number }
+	| { rule: "fastMode"; state: boolean };
 
 export type CellState =
 	| { status: "free" }
@@ -138,6 +139,7 @@ export type GameState = RoomState & {
 	rules: {
 		boardSize: number;
 		timeLimit: number;
+		fastMode: boolean;
 	};
 	round: number;
 	currentPlayerIndex: number; // index in players, including spectators
@@ -299,6 +301,7 @@ export class Memory extends RoomMatch<GameState> {
 			rules: {
 				boardSize: DEFAULT_BOARD_SIZE,
 				timeLimit: DEFAULT_TIME_LIMIT_MS / 1000,
+				fastMode: false,
 			},
 			// GameState specific properties
 			round: 0,
@@ -327,6 +330,8 @@ export class Memory extends RoomMatch<GameState> {
 				.map(() => Array(payload.state).fill(null));
 		} else if (payload.rule === "timeLimit") {
 			this.state.rules.timeLimit = payload.state;
+		} else if (payload.rule === "fastMode") {
+			this.state.rules.fastMode = payload.state;
 		}
 		await this.ctx.storage.put("gameState", this.state);
 		this.broadcast({ type: "state", payload: this.state });
@@ -543,6 +548,11 @@ export class Memory extends RoomMatch<GameState> {
 		// }
 	}
 
+	private getEffectiveCost(baseCost: number): number {
+		if (!this.state) return baseCost;
+		return this.state.rules.fastMode ? Math.ceil(baseCost / 2) : baseCost;
+	}
+
 	async reserveMemory(
 		playerId: string,
 		x: number,
@@ -585,11 +595,13 @@ export class Memory extends RoomMatch<GameState> {
 			}
 		}
 
+		const effectiveCost = this.getEffectiveCost(card.cost);
+
 		this.state.lastAction = {
 			playerId,
 			type: "reserveMemory",
 			positions,
-			cardCost: card.cost,
+			cardCost: effectiveCost,
 			timestamp: Date.now(),
 		};
 
@@ -599,7 +611,7 @@ export class Memory extends RoomMatch<GameState> {
 		const { id, card: newCard } = this.drawMemoryCard();
 		this.state.hands[playerId].memory[id] = newCard;
 
-		this.state.clocks[playerId] -= card.cost;
+		this.state.clocks[playerId] -= effectiveCost;
 
 		// for (const id of this.state.players) {
 		// 	if (this.state.missions[id]) {
@@ -670,11 +682,13 @@ export class Memory extends RoomMatch<GameState> {
 			}
 		}
 
+		const effectiveCost = this.getEffectiveCost(card.cost);
+
 		this.state.lastAction = {
 			playerId,
 			type: "execFunction",
 			positions,
-			cardCost: card.cost,
+			cardCost: effectiveCost,
 			timestamp: Date.now(),
 		};
 
@@ -690,10 +704,10 @@ export class Memory extends RoomMatch<GameState> {
 		const { id, card: newCard } = this.getFunctionCard();
 		this.state.hands[playerId].func[id] = newCard;
 
-		this.state.clocks[playerId] -= card.cost;
+		this.state.clocks[playerId] -= effectiveCost;
 
 		// TODO: ポイント加算ロジックを調整する
-		let pointsToAdd = card.cost;
+		let pointsToAdd = effectiveCost;
 		// Apply double points effect if active
 		if (this.state.activeEffects[playerId]?.doublePoints) {
 			pointsToAdd *= 2;
@@ -1133,8 +1147,9 @@ export class Memory extends RoomMatch<GameState> {
 					return false;
 				}
 
-				if (this.state.clocks[player] < card.cost) {
-					console.error("Not enough clock:", player, card.cost);
+				const effectiveCost = this.getEffectiveCost(card.cost);
+				if (this.state.clocks[player] < effectiveCost) {
+					console.error("Not enough clock:", player, effectiveCost);
 					return false;
 				}
 
@@ -1200,8 +1215,9 @@ export class Memory extends RoomMatch<GameState> {
 					return false;
 				}
 
-				if (this.state.clocks[player] < card.cost) {
-					console.error("Not enough clock:", player, card.cost);
+				const effectiveCost = this.getEffectiveCost(card.cost);
+				if (this.state.clocks[player] < effectiveCost) {
+					console.error("Not enough clock:", player, effectiveCost);
 					return false;
 				}
 
