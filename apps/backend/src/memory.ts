@@ -110,12 +110,12 @@ type EventEffectType =
 			type: "freeze-player";
 			target: "any-one-opponent" | "all-opponents";
 			turns: number;
-	  } // cannot play for specified turns
+	  } // cannot play for specified rounds
 	| {
 			type: "double-points";
 			target: "self" | "all";
 			turns: number;
-	  } // double points for specified turns
+	  } // double points for specified rounds
 	| { type: "use-after-free"; count: number }; // can execute function cards on at most specified number of free cells
 
 type LastAction = {
@@ -127,7 +127,8 @@ type LastAction = {
 		| "garbageCollect"
 		| "redrawMemoryCard"
 		| "buyEventCard"
-		| "pass";
+		| "pass"
+		| "frozen";
 	positions?: { x: number; y: number }[];
 	eventDescription?: string;
 	cardCost?: number;
@@ -156,8 +157,11 @@ export type GameState = RoomState & {
 	timeoutId?: ReturnType<typeof setTimeout>;
 	activeEffects: {
 		[playerId: string]: {
-			frozen?: number; // turns remaining
-			doublePoints?: number; // turns remaining
+			frozen?: number; // rounds remaining
+			doublePoints?: {
+				rounds: number;
+				casterId?: string; // who cast this effect (for all-player effects)
+			};
 			useAfterFree?: number; // count of free cells that can be used
 		};
 	};
@@ -493,6 +497,40 @@ export class Memory extends RoomMatch<GameState> {
 
 		const players = this.state.players;
 		const currentPlayerIndex = this.state.currentPlayerIndex;
+		const currentPlayerId = players[currentPlayerIndex].id;
+
+		// Decrease effects at turn end for the current player
+		const currentEffects = this.state.activeEffects[currentPlayerId];
+		if (currentEffects?.doublePoints) {
+			// Decrease self-only effects (no casterId)
+			if (!currentEffects.doublePoints.casterId) {
+				currentEffects.doublePoints.rounds--;
+				if (currentEffects.doublePoints.rounds <= 0) {
+					delete currentEffects.doublePoints;
+				}
+			}
+			// Decrease all-player effects if this player is the caster
+			else if (currentEffects.doublePoints.casterId === currentPlayerId) {
+				// Decrease for ALL players with this effect
+				for (const player of this.state.players) {
+					const playerEffects = this.state.activeEffects[player.id];
+					if (playerEffects?.doublePoints?.casterId === currentPlayerId) {
+						playerEffects.doublePoints.rounds--;
+						if (playerEffects.doublePoints.rounds <= 0) {
+							delete playerEffects.doublePoints;
+						}
+					}
+				}
+			}
+		}
+
+		// Decrease frozen at turn end for the current player
+		if (currentEffects?.frozen !== undefined) {
+			currentEffects.frozen--;
+			if (currentEffects.frozen <= 0) {
+				delete currentEffects.frozen;
+			}
+		}
 
 		const activePlayers = players.filter(
 			(p) => p.type === "player" || p.type === "cpu",
@@ -532,28 +570,18 @@ export class Memory extends RoomMatch<GameState> {
 
 		this.state.clocks[nextActivePlayer.id] += 1;
 
-		// Decrease active effects duration for all players
-		for (const player of this.state.players) {
-			const effects = this.state.activeEffects[player.id];
-			if (!effects) continue;
-
-			// Decrease frozen turns
-			if (effects.frozen !== undefined) {
-				effects.frozen--;
-				if (effects.frozen <= 0) {
-					delete effects.frozen;
-				}
-			}
-
-			// Decrease double points turns
-			if (effects.doublePoints !== undefined) {
-				effects.doublePoints--;
-				if (effects.doublePoints <= 0) {
-					delete effects.doublePoints;
-				}
-			}
-
-			// use-after-free is consumed when used, not by turns
+		// Auto-pass if next player is frozen (before broadcasting state)
+		const nextEffects = this.state.activeEffects[nextActivePlayer.id];
+		if (nextEffects?.frozen !== undefined && nextEffects.frozen > 0) {
+			this.state.lastAction = {
+				playerId: nextActivePlayer.id,
+				type: "frozen",
+				timestamp: Date.now(),
+			};
+			await this.ctx.storage.put("gameState", this.state);
+			this.broadcast({ type: "state", payload: this.state });
+			await this.advanceTurnAndRound();
+			return;
 		}
 
 		// Reset timer for the next player's turn
@@ -891,14 +919,19 @@ export class Memory extends RoomMatch<GameState> {
 					if (!this.state.activeEffects[playerId]) {
 						this.state.activeEffects[playerId] = {};
 					}
-					this.state.activeEffects[playerId].doublePoints = effect.turns;
+					this.state.activeEffects[playerId].doublePoints = {
+						rounds: effect.turns + 1,
+					};
 				} else {
 					// all players
 					for (const player of this.state.players) {
 						if (!this.state.activeEffects[player.id]) {
 							this.state.activeEffects[player.id] = {};
 						}
-						this.state.activeEffects[player.id].doublePoints = effect.turns;
+						this.state.activeEffects[player.id].doublePoints = {
+							rounds: effect.turns + 1,
+							casterId: playerId,
+						};
 					}
 				}
 				break;

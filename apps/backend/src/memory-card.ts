@@ -295,21 +295,21 @@ export const eventCards: Record<
 
 	// === プレイヤー凍結系 ===
 	ec_freeze_one_1turn: {
-		description: "相手1人を1ターン凍結",
+		description: "相手1人を1ラウンド凍結",
 		effect: { type: "freeze-player", target: "any-one-opponent", turns: 1 },
 	},
 	ec_freeze_all_1turn: {
-		description: "全ての相手を1ターン凍結",
+		description: "全ての相手を1ラウンド凍結",
 		effect: { type: "freeze-player", target: "all-opponents", turns: 1 },
 	},
 
 	// === ポイント2倍系 ===
 	ec_double_self_2turns: {
-		description: "次の2ターン、自分の獲得ポイントが2倍",
+		description: "次の2ラウンド、自分の獲得ポイントが2倍",
 		effect: { type: "double-points", target: "self", turns: 2 },
 	},
 	ec_double_all_2turns: {
-		description: "次の2ターン、全員の獲得ポイントが2倍",
+		description: "次の2ラウンド、全員の獲得ポイントが2倍",
 		effect: { type: "double-points", target: "all", turns: 2 },
 	},
 

@@ -385,6 +385,41 @@ function EventCards({
 	);
 }
 
+function ActiveEffects({
+	effects,
+}: {
+	effects: {
+		frozen?: number;
+		doublePoints?: {
+			rounds: number;
+			casterId?: string;
+		};
+		useAfterFree?: number;
+	};
+}) {
+	const hasEffects =
+		effects.frozen || effects.doublePoints || effects.useAfterFree;
+	if (!hasEffects) return null;
+
+	return (
+		<div className="flex gap-1 justify-center flex-wrap text-xs">
+			{effects.frozen && (
+				<span className="badge badge-info">🧊 Frozen ({effects.frozen})</span>
+			)}
+			{effects.doublePoints && (
+				<span className="badge badge-success">
+					⭐ 2x Points ({effects.doublePoints.rounds})
+				</span>
+			)}
+			{effects.useAfterFree && (
+				<span className="badge badge-warning">
+					🔓 UAF ({effects.useAfterFree})
+				</span>
+			)}
+		</div>
+	);
+}
+
 function AvailableEventCards({
 	availableCards,
 	onCardSelect,
@@ -427,6 +462,37 @@ function AvailableEventCards({
 	);
 }
 
+function PlayerTargetSelector({
+	players,
+	currentPlayerId,
+	onSelectPlayer,
+	selectedPlayerId,
+}: {
+	players: { id: string; type: string }[];
+	currentPlayerId: string;
+	onSelectPlayer: (playerId: string) => void;
+	selectedPlayerId: string | null;
+}) {
+	const opponents = players.filter((p) => p.id !== currentPlayerId);
+	return (
+		<div className="border-2 rounded-lg bg-base-200 p-2 border-error mb-2">
+			<div className="text-error font-semibold">Select Target Player</div>
+			<div className="flex gap-2 justify-center flex-wrap">
+				{opponents.map((player, index) => (
+					<button
+						key={player.id}
+						type="button"
+						className={`btn ${selectedPlayerId === player.id ? "btn-accent" : "btn-error"}`}
+						onClick={() => onSelectPlayer(player.id)}
+					>
+						Player {index + 1}
+					</button>
+				))}
+			</div>
+		</div>
+	);
+}
+
 // --- Main Page Component ---
 
 function LastActionBanner({
@@ -445,7 +511,7 @@ function LastActionBanner({
 
 	switch (lastAction.type) {
 		case "reserveMemory":
-			actionText = `${playerName} がメモリを配置${lastAction.cardCost ? ` (コスト: ${lastAction.cardCost})` : ""}`;
+			actionText = `${playerName} がメモリを確保${lastAction.cardCost ? ` (コスト: ${lastAction.cardCost})` : ""}`;
 			bgColor = "bg-primary";
 			break;
 		case "execFunction":
@@ -471,6 +537,10 @@ function LastActionBanner({
 		case "pass":
 			actionText = `${playerName} がパス`;
 			bgColor = "bg-base-300";
+			break;
+		case "frozen":
+			actionText = `${playerName} は凍結した`;
+			bgColor = "bg-info";
 			break;
 		default:
 			return null;
@@ -547,12 +617,20 @@ export default function RoomPage() {
 		: null;
 	const currentPlayer =
 		gameState?.players[gameState.currentPlayerIndex] ?? null;
+	const isFrozen =
+		user && gameState?.activeEffects[user.id]?.frozen
+			? (gameState.activeEffects[user.id].frozen ?? 0) > 0
+			: false;
+	const canPlayerAct = currentPlayer?.id === user?.id && !isFrozen;
 
 	const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
 	const [selectedFuncId, setSelectedFuncId] = useState<string | null>(null);
 	const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 	const [selectedAvailableEventIndex, setSelectedAvailableEventIndex] =
 		useState<number | null>(null);
+	const [selectedTargetPlayerId, setSelectedTargetPlayerId] = useState<
+		string | null
+	>(null);
 	const [isGCMode, setIsGCMode] = useState(false);
 	const [isRedrawMode, setIsRedrawMode] = useState(false);
 	const [highlightedCells, setHighlightedCells] = useState<
@@ -669,15 +747,28 @@ export default function RoomPage() {
 			});
 			setSelectedFuncId(null);
 		} else if (selectedEventId) {
+			const eventCard = gameState.hands[user.id].event[selectedEventId];
+			if (
+				eventCard?.effect &&
+				"target" in eventCard.effect &&
+				(eventCard.effect as { target: string }).target ===
+					"any-one-opponent" &&
+				!selectedTargetPlayerId
+			) {
+				alert("対象プレイヤーを選択してください");
+				return;
+			}
 			sendWsMessage({
 				type: "execEvent",
 				payload: {
 					eventCardId: selectedEventId,
 					x,
 					y,
+					targetPlayerId: selectedTargetPlayerId || undefined,
 				},
 			});
 			setSelectedEventId(null);
+			setSelectedTargetPlayerId(null);
 		} else if (isGCMode) {
 			const cell = gameState.board[y][x];
 			if (
@@ -1215,6 +1306,9 @@ export default function RoomPage() {
 										{Object.keys(gameState.hands[opponent.id].event).length}
 									</div>
 								</div>
+								<ActiveEffects
+									effects={gameState.activeEffects[opponent.id] || {}}
+								/>
 								<Missions
 									title="functions"
 									cards={gameState.hands[opponent.id].func}
@@ -1243,7 +1337,7 @@ export default function RoomPage() {
 						availableCards={gameState.availableEventCards}
 						onCardSelect={handleSelectAvailableEvent}
 						selectedIndex={selectedAvailableEventIndex}
-						isMyTurn={currentPlayer.id === user.id}
+						isMyTurn={canPlayerAct}
 						currentClock={gameState.clocks[user.id]}
 					/>
 					<GameBoard
@@ -1272,7 +1366,7 @@ export default function RoomPage() {
 							}}
 							selectedFuncId={selectedFuncId}
 							currentClock={gameState.clocks[user.id]}
-							isMyTurn={currentPlayer.id === user.id}
+							isMyTurn={canPlayerAct}
 							fastMode={gameState.rules.fastMode}
 						/>
 					)}
@@ -1285,9 +1379,26 @@ export default function RoomPage() {
 									setSelectedEventId(i);
 									setSelectedCardId(null);
 									setSelectedFuncId(null);
+									setSelectedTargetPlayerId(null);
 								}}
 								selectedEventId={selectedEventId}
-								isMyTurn={currentPlayer.id === user.id}
+								isMyTurn={canPlayerAct}
+							/>
+						)}
+					{selectedEventId &&
+						gameState.hands[user.id].event[selectedEventId]?.effect &&
+						"target" in
+							gameState.hands[user.id].event[selectedEventId].effect &&
+						(
+							gameState.hands[user.id].event[selectedEventId].effect as {
+								target: string;
+							}
+						).target === "any-one-opponent" && (
+							<PlayerTargetSelector
+								players={gameState.players}
+								currentPlayerId={user.id}
+								onSelectPlayer={setSelectedTargetPlayerId}
+								selectedPlayerId={selectedTargetPlayerId}
 							/>
 						)}
 					<div className="flex flex-row items-end gap-4">
@@ -1300,6 +1411,7 @@ export default function RoomPage() {
 									Points: {gameState.points[user.id] || 0}
 								</div>
 							</div>
+							<ActiveEffects effects={gameState.activeEffects[user.id] || {}} />
 							{gameState.hands[user.id] && (
 								<Hand
 									cards={gameState.hands[user.id].memory}
@@ -1315,7 +1427,7 @@ export default function RoomPage() {
 									}}
 									selectedCardId={selectedCardId}
 									currentClock={gameState.clocks[user.id]}
-									isMyTurn={currentPlayer.id === user.id}
+									isMyTurn={canPlayerAct}
 									isRedrawMode={isRedrawMode}
 									fastMode={gameState.rules.fastMode}
 								/>
@@ -1324,7 +1436,7 @@ export default function RoomPage() {
 						<div className="flex flex-col items-center gap-2">
 							<button
 								type="button"
-								disabled={currentPlayer.id !== user.id}
+								disabled={!canPlayerAct}
 								className={`btn ${isGCMode ? "btn-accent" : "btn-secondary"} hover:btn-accent disabled:opacity-50 disabled:cursor-not-allowed`}
 								onClick={() => {
 									setIsGCMode(!isGCMode);
@@ -1338,7 +1450,7 @@ export default function RoomPage() {
 							</button>
 							<button
 								type="button"
-								disabled={currentPlayer.id !== user.id}
+								disabled={!canPlayerAct}
 								className={`btn ${isRedrawMode ? "btn-accent" : "btn-warning"} hover:btn-accent disabled:opacity-50 disabled:cursor-not-allowed`}
 								onClick={() => {
 									setIsRedrawMode(!isRedrawMode);
@@ -1353,7 +1465,7 @@ export default function RoomPage() {
 							<button
 								type="button"
 								disabled={
-									currentPlayer.id !== user.id ||
+									!canPlayerAct ||
 									gameState.clocks[user.id] < 3 ||
 									selectedAvailableEventIndex === null
 								}
@@ -1364,7 +1476,7 @@ export default function RoomPage() {
 							</button>
 							<button
 								type="button"
-								disabled={currentPlayer.id !== user.id}
+								disabled={!canPlayerAct}
 								className="btn btn-primary hover:btn-accent disabled:opacity-50 disabled:cursor-not-allowed"
 								onClick={() => {
 									sendWsMessage({ type: "pass" });
