@@ -11,11 +11,6 @@ export type PlayerStatus =
 	| "spectatingReady"
 	| "error";
 
-export interface Session {
-	ws: WebSocket;
-	playerId: string;
-}
-
 export type RoomState = {
 	status: RoomStatus;
 	players: {
@@ -28,7 +23,6 @@ export type RoomState = {
 
 export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 	state: T | undefined = undefined;
-	sessions: Session[] = [];
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
@@ -66,22 +60,25 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 	}
 
 	async handleSession(playerId: string, playerName: string, server: WebSocket) {
+		this.ctx.setWebSocketAutoResponse(
+			new WebSocketRequestResponsePair("ping", "pong"),
+		);
 		this.ctx.acceptWebSocket(server);
-
-		const session: Session = { ws: server, playerId };
-		this.sessions.push(session);
+		server.serializeAttachment({ playerId });
 
 		await this.addPlayer(playerId, playerName);
 	}
 
 	async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
-		const playerId = this.sessions.find((s) => s.ws === ws)?.playerId;
-		if (!playerId) {
+		const attachment = ws.deserializeAttachment() as {
+			playerId: string;
+		} | null;
+		if (!attachment?.playerId) {
 			console.error("[WS] No playerId found for WebSocket");
 			return;
 		}
 		const messageEvent = new MessageEvent("message", { data: message });
-		await this.wsMessageListener(ws, messageEvent, playerId);
+		await this.wsMessageListener(ws, messageEvent, attachment.playerId);
 	}
 
 	async webSocketClose(
@@ -93,10 +90,11 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 		console.log(
 			`[WS] WebSocket closed: code=${code}, reason=${reason}, wasClean=${wasClean}`,
 		);
-		const session = this.sessions.find((s) => s.ws === ws);
-		if (session) {
-			this.sessions = this.sessions.filter((s) => s !== session);
-			this.updateDisconnectedPlayer(session.playerId);
+		const attachment = ws.deserializeAttachment() as {
+			playerId: string;
+		} | null;
+		if (attachment?.playerId) {
+			this.updateDisconnectedPlayer(attachment.playerId);
 		}
 	}
 
@@ -106,13 +104,14 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 
 	broadcast(message: unknown) {
 		const serialized = JSON.stringify(message);
-		this.sessions.forEach((session) => {
+		const webSockets = this.ctx.getWebSockets();
+		for (const ws of webSockets) {
 			try {
-				session.ws.send(serialized);
-			} catch {
-				this.sessions = this.sessions.filter((s) => s !== session);
+				ws.send(serialized);
+			} catch (error) {
+				console.error("[WS] Failed to send message:", error);
 			}
-		});
+		}
 	}
 
 	// --- Room Management Methods ---
@@ -219,13 +218,18 @@ export abstract class RoomMatch<T extends RoomState> extends DurableObject {
 		if (!this.state || !this.state.players.some((p) => p.id === playerId))
 			return;
 
-		if (!this.sessions.some((s) => s.playerId === playerId)) {
+		const isStillConnected = this.ctx.getWebSockets().some((ws) => {
+			const attachment = ws.deserializeAttachment() as {
+				playerId: string;
+			} | null;
+			return attachment?.playerId === playerId;
+		});
+
+		if (!isStillConnected) {
 			console.log(
 				`[WS] Player ${playerId} disconnected, status: ${this.state.status}`,
 			);
 			if (this.state.status === "preparing") {
-				// Keep player in the room but mark as error to allow reconnection
-				// Only fully remove if they stay disconnected for a long time
 				this.state.playerStatus[playerId] = "error";
 				await this.ctx.storage.put("gameState", this.state);
 				this.broadcast({ type: "state", payload: this.state });

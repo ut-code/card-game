@@ -318,6 +318,7 @@ export default function RoomPage() {
 		socket.onerror = (err) => console.error("[WS] WebSocket error:", err);
 
 		socket.onmessage = (event) => {
+			if (event.data === "pong") return;
 			console.log("[WS] Message from server:", event.data);
 			const message = JSON.parse(event.data);
 			if (message.type === "state") {
@@ -329,7 +330,16 @@ export default function RoomPage() {
 			}
 		};
 
-		return () => socket.close();
+		const pingInterval = setInterval(() => {
+			if (socket.readyState === WebSocket.OPEN) {
+				socket.send("ping");
+			}
+		}, 5000);
+
+		return () => {
+			clearInterval(pingInterval);
+			socket.close();
+		};
 	}, [roomId, user.id, user.name]);
 
 	useEffect(() => {
