@@ -308,6 +308,10 @@ export const missions: Record<string, Mission> = {
 	},
 };
 
+export function getMissionKey(mission: Mission): string {
+	return `${mission.type}-${mission.target}`;
+}
+
 // type: 何を作るか　target: どこで作るか　description: 説明文
 // sum: 合計　multipile: 倍数　arthmetic: 等差数列　geometic: 等比数列　prime: 素数
 // column: 縦・列　row: 横・行　diagonal: 対角線　allDirection: 縦・横・対角線すべて　allCell: 盤面上に4つ

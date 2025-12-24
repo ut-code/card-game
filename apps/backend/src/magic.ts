@@ -1,6 +1,6 @@
 import type { Env } from "hono/types";
 import { chooseBestMove } from "./magic-cpu";
-import { type Mission, missions } from "./mission";
+import { getMissionKey, type Mission, missions } from "./mission";
 import { RoomMatch, type RoomState } from "./room";
 
 // --- Game-specific Types ---
@@ -293,11 +293,30 @@ export class Magic extends RoomMatch<GameState> {
 		}
 	}
 
-	// TODO: ミッションの重複を避ける
 	getRandomMission() {
+		if (!this.state) throw new Error("Game state is not initialized");
+
+		const usedMissionKeys = new Set<string>();
+		for (const playerId of Object.keys(this.state.missions)) {
+			const playerMission = this.state.missions[playerId];
+			if (playerMission) {
+				usedMissionKeys.add(getMissionKey(playerMission.mission));
+			}
+		}
+
 		const missionKeys = Object.keys(missions);
+		const availableKeys = missionKeys.filter(
+			(key) => !usedMissionKeys.has(getMissionKey(missions[key])),
+		);
+
+		if (availableKeys.length === 0) {
+			const randomKey =
+				missionKeys[Math.floor(Math.random() * missionKeys.length)];
+			return { id: randomKey, mission: missions[randomKey] };
+		}
+
 		const randomKey =
-			missionKeys[Math.floor(Math.random() * missionKeys.length)];
+			availableKeys[Math.floor(Math.random() * availableKeys.length)];
 		return { id: randomKey, mission: missions[randomKey] };
 	}
 
